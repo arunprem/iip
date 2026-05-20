@@ -1,0 +1,14 @@
+[project]
+name = "iip-audit"
+version = "0.1.0"
+description = "IIP Audit Library — tamper-evident, cryptographically chained audit logs"
+requires-python = ">=3.12"
+dependencies = [
+  "iip-core",
+  "aiokafka>=0.11.0",
+  "structlog>=24.2.0",
+  "pydantic>=2.7.0",
+]
+
+[tool.uv.sources]
+iip-core = { workspace = true }

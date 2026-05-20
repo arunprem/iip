@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.uv/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+dist/
+.next/
+.nuxt/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Docker
+*.env
+
+# Secrets / Keys
+*.pem
+*.key
+cosign.key
+sbom.json
+
+# Graphify
+graphify-out/

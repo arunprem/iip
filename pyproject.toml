@@ -1,0 +1,45 @@
+[project]
+name = "iip-backend"
+version = "0.1.0"
+description = "Integrated Intelligence Platform — Backend Monorepo"
+readme = "README.md"
+requires-python = ">=3.12"
+
+[tool.uv]
+workspace = { members = [
+  "backend/libs/iip-core",
+  "backend/libs/iip-audit",
+  "backend/libs/iip-llm",
+  "backend/services/iam-svc",
+  "backend/services/ml-gateway-svc",
+] }
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+exclude = ["venv", ".venv", "tests/", "dist/"]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "ASYNC", "B", "S", "T20"]
+ignore = ["S101"]
+per-file-ignores = { "tests/**/*.py" = ["S101", "S106"] }
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["backend"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]

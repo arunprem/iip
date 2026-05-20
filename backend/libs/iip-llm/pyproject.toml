@@ -1,0 +1,19 @@
+[project]
+name = "iip-llm"
+version = "0.1.0"
+description = "IIP LLM Library — Llama 3.1 / Run:ai client with RAG support"
+requires-python = ">=3.12"
+dependencies = [
+  "iip-core",
+  "iip-audit",
+  "openai>=1.30.0",
+  "httpx>=0.27.0",
+  "pydantic>=2.7.0",
+  "pydantic-settings>=2.3.0",
+  "tiktoken>=0.7.0",
+  "elasticsearch[async]>=8.13.0",
+]
+
+[tool.uv.sources]
+iip-core  = { workspace = true }
+iip-audit = { workspace = true }
