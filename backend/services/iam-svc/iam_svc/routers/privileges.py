@@ -53,6 +53,11 @@ class UpdatePrivilegeRequest(BaseModel):
     is_active: bool | None = None
 
 
+class PrivilegeDeletionCheckResponse(BaseModel):
+    can_delete: bool
+    blockers: list[str]
+
+
 class CreateActionRequest(BaseModel):
     action_code: str
     action_label: str
@@ -114,6 +119,28 @@ async def create_privilege(
     )
     created = await PrivilegeRepository(db).create(priv)
     return _priv_to_response(created)
+
+
+@router.get("/{privilege_id}/deletion-check", response_model=PrivilegeDeletionCheckResponse)
+async def check_privilege_deletion(
+    privilege_id: str,
+    _: Annotated[Role, Depends(require_system_admin_role)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> PrivilegeDeletionCheckResponse:
+    blockers = await PrivilegeRepository(db).get_deletion_blockers(privilege_id)
+    return PrivilegeDeletionCheckResponse(
+        can_delete=len(blockers) == 0,
+        blockers=blockers,
+    )
+
+
+@router.delete("/{privilege_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_privilege(
+    privilege_id: str,
+    _: Annotated[Role, Depends(require_system_admin_role)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    await PrivilegeRepository(db).delete(privilege_id)
 
 
 @router.patch("/{privilege_id}", response_model=PrivilegeResponse)

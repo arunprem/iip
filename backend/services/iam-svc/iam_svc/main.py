@@ -31,6 +31,7 @@ from iip_core.logging import configure_logging, get_logger
 from iip_core.settings import BaseServiceSettings
 
 from .routers import auth as auth_router
+from .routers import profile as profile_router
 from .routers import health as health_router
 from .routers import users as users_router
 from .routers import roles as roles_router
@@ -39,6 +40,10 @@ from .routers import captcha as captcha_router
 from .routers import menus as menus_router
 from .routers import privileges as privileges_router
 from .routers import access as access_router
+from .routers import offices as offices_router
+from .routers import ranks as ranks_router
+from .routers import unit_types as unit_types_router
+from .routers import office_lookups as office_lookups_router
 
 settings = BaseServiceSettings(service_name="iam-svc")
 logger = get_logger(__name__)
@@ -151,6 +156,7 @@ def create_app() -> FastAPI:
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(health_router.router, tags=["health"])
     app.include_router(auth_router.router, prefix="/api/v1/auth", tags=["authentication"])
+    app.include_router(profile_router.router, prefix="/api/v1/auth/me", tags=["profile"])
     app.include_router(users_router.router, prefix="/api/v1/iam/users", tags=["users"])
     app.include_router(roles_router.router, prefix="/api/v1/iam/roles", tags=["roles"])
     app.include_router(jit_router.router, prefix="/api/v1/iam/jit", tags=["jit-elevation"])
@@ -158,6 +164,14 @@ def create_app() -> FastAPI:
     app.include_router(menus_router.router, prefix="/api/v1/iam/menus", tags=["menus"])
     app.include_router(privileges_router.router, prefix="/api/v1/iam/privileges", tags=["privileges"])
     app.include_router(access_router.router, prefix="/api/v1/iam/access", tags=["access"])
+    app.include_router(offices_router.router, prefix="/api/v1/iam/offices", tags=["offices"])
+    app.include_router(
+        office_lookups_router.router,
+        prefix="/api/v1/iam/office-lookups",
+        tags=["office-lookups"],
+    )
+    app.include_router(unit_types_router.router, prefix="/api/v1/iam/unit-types", tags=["unit-types"])
+    app.include_router(ranks_router.router, prefix="/api/v1/iam/ranks", tags=["ranks"])
 
     # ── OpenTelemetry Instrumentation ─────────────────────────────────────────
     FastAPIInstrumentor.instrument_app(app)

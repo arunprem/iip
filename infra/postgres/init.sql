@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS iam.users (
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     mfa_secret      TEXT,               -- Encrypted TOTP secret
     last_login_at   TIMESTAMPTZ,
+    profile_photo_path VARCHAR(512),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

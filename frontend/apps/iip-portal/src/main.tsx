@@ -1,10 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { setupApiClient } from './api/client'
 import { App } from './app/App'
-import { useAuthStore } from './stores/authStore'
 import './index.css'
+import 'sweetalert2/dist/sweetalert2.min.css'
 
-void useAuthStore.persist.rehydrate()
+setupApiClient()
 
 const root = document.getElementById('root')!
 ReactDOM.createRoot(root).render(

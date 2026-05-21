@@ -1,14 +1,16 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from iip_core.errors import NotFoundError
+from iip_core.errors import ErrorCode, IIPException, NotFoundError
 from iam_svc.models.grant_tables import role_menu_privileges, role_privilege_actions
+from iam_svc.models.menu import Menu
 from iam_svc.models.privilege import Privilege
 from iam_svc.models.privilege_action import PrivilegeAction
+from iam_svc.models.role import Role
 
 
 class PrivilegeRepository:
@@ -68,6 +70,84 @@ class PrivilegeRepository:
         await self.session.execute(
             delete(PrivilegeAction).where(PrivilegeAction.id == action_id)
         )
+
+    async def get_deletion_blockers(self, privilege_id: str | uuid.UUID) -> list[str]:
+        if isinstance(privilege_id, str):
+            privilege_id = uuid.UUID(privilege_id)
+        await self.get_by_id_or_error(privilege_id)
+        blockers: list[str] = []
+
+        menu_role_rows = await self.session.execute(
+            select(Role.role_name)
+            .join(
+                role_menu_privileges,
+                role_menu_privileges.c.role_id == Role.id,
+            )
+            .where(role_menu_privileges.c.privilege_id == privilege_id)
+            .order_by(Role.role_name)
+        )
+        menu_roles = list(menu_role_rows.scalars().all())
+        if menu_roles:
+            blockers.append(
+                "Menu access is assigned to role(s): "
+                f"{', '.join(menu_roles)}. Remove the grant in Role Management → menu access matrix."
+            )
+
+        menu_rows = await self.session.execute(
+            select(Menu.menu_key, Menu.label)
+            .where(Menu.privilege_id == privilege_id)
+            .order_by(Menu.menu_key)
+        )
+        linked_menus = list(menu_rows.all())
+        if linked_menus:
+            keys = ", ".join(f"{row.menu_key} ({row.label})" for row in linked_menus)
+            blockers.append(
+                f"Linked to menu item(s): {keys}. Unlink or delete them in Menu Management first."
+            )
+
+        data_role_rows = await self.session.execute(
+            select(Role.role_name)
+            .join(
+                role_privilege_actions,
+                role_privilege_actions.c.role_id == Role.id,
+            )
+            .where(role_privilege_actions.c.privilege_id == privilege_id)
+            .distinct()
+            .order_by(Role.role_name)
+        )
+        data_roles = list(data_role_rows.scalars().all())
+        if data_roles:
+            blockers.append(
+                "Data action grants exist for role(s): "
+                f"{', '.join(data_roles)}. Uncheck them in the Data privileges matrix below, "
+                "then click Save data privileges."
+            )
+
+        return blockers
+
+    async def _clear_legacy_role_grants(self, privilege_id: uuid.UUID) -> None:
+        """Remove obsolete iam.role_privileges rows (pre-matrix seed grants)."""
+        await self.session.execute(
+            text("DELETE FROM iam.role_privileges WHERE privilege_id = :privilege_id"),
+            {"privilege_id": privilege_id},
+        )
+
+    async def delete(self, privilege_id: str | uuid.UUID) -> None:
+        if isinstance(privilege_id, str):
+            privilege_id = uuid.UUID(privilege_id)
+        blockers = await self.get_deletion_blockers(privilege_id)
+        if blockers:
+            raise IIPException(
+                status_code=409,
+                error_code=ErrorCode.CONFLICT,
+                detail="Cannot delete this privilege while assignments exist. "
+                + " ".join(blockers),
+                meta={"blockers": blockers},
+            )
+        await self._clear_legacy_role_grants(privilege_id)
+        priv = await self.get_by_id_or_error(privilege_id)
+        await self.session.delete(priv)
+        await self.session.flush()
 
     async def set_role_menu_privileges(self, role_id: uuid.UUID, privilege_ids: list[uuid.UUID]) -> None:
         await self.session.execute(

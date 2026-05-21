@@ -18,8 +18,10 @@
     "lucide-react": "^0.390.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
+    "react-easy-crop": "^5.4.2",
     "react-router-dom": "^6.23.0",
     "recharts": "^2.12.7",
+    "sweetalert2": "^11.26.24",
     "zustand": "^4.5.7"
   },
   "devDependencies": {

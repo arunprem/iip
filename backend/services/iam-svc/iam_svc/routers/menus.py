@@ -71,13 +71,14 @@ async def list_menus(
     menus = await repo.list_all(include_inactive=include_inactive)
     if flat:
         flat_list: list[Menu] = []
+        roots = [m for m in menus if m.parent_id is None]
 
         def walk(items: list[Menu]) -> None:
             for m in items:
                 flat_list.append(m)
                 walk(list(m.children))
 
-        walk(menus)
+        walk(roots)
         return [_to_response(m) for m in flat_list]
     return [_to_response(m) for m in menus if m.parent_id is None]
 
@@ -163,10 +164,7 @@ async def delete_menu(
     _: Annotated[Role, Depends(require_system_admin_role)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    repo = MenuRepository(db)
-    menu = await repo.get_by_id_or_error(menu_id)
-    menu.is_active = False
-    await repo.update(menu)
+    await MenuRepository(db).delete(menu_id)
 
 
 async def _resolve_privilege_id(

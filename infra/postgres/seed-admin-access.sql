@@ -52,3 +52,14 @@ FROM iam.users u
 JOIN iam.roles r ON r.role_name = 'SYSTEM_ADMIN'
 WHERE u.username = 'admin'
 ON CONFLICT DO NOTHING;
+
+-- Office-scoped SYSTEM_ADMIN at PHQ (menus use role for the selected office)
+INSERT INTO iam.user_office_roles (user_id, office_id, role_id)
+SELECT u.id, o.id, r.id
+FROM iam.users u
+CROSS JOIN iam.roles r
+CROSS JOIN iam.offices o
+WHERE u.username = 'admin'
+  AND r.role_name = 'SYSTEM_ADMIN'
+  AND o.office_code = 'PHQ'
+ON CONFLICT (user_id, office_id) DO UPDATE SET role_id = EXCLUDED.role_id;

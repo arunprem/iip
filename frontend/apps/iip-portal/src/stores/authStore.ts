@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { apiClient } from '../api/client';
+import { apiClient } from '../api/http';
 
 export interface OfficeAssignment {
   office_id: string;
@@ -19,13 +19,20 @@ export interface ActionGrant {
 export interface User {
   user_id: string;
   username: string;
+  email: string;
+  full_name: string;
+  badge_number: string;
+  department: string;
   roles: string[];
   groups: string[];
   clearance_level: string;
   jit_elevated: boolean;
   offices: OfficeAssignment[];
   default_office_id: string | null;
+  profile_photo_url: string | null;
 }
+
+export type SessionLockReason = 'idle' | 'expired';
 
 interface AuthState {
   accessToken: string | null;
@@ -34,14 +41,24 @@ interface AuthState {
   currentOfficeId: string | null;
   actionGrants: ActionGrant[];
   isLoading: boolean;
+  sessionInitializing: boolean;
+  sessionInitFailed: boolean;
+  sessionLocked: boolean;
+  lockReason: SessionLockReason | null;
 
   setTokens: (accessToken: string, refreshToken: string) => void;
   setUser: (user: User) => void;
   setCurrentOfficeId: (officeId: string) => void;
   login: (username: string, password: string, captchaId: string, captchaCode: string) => Promise<void>;
   logout: () => void;
+  lockSession: (reason: SessionLockReason) => void;
+  unlockSession: (password: string, captchaId: string, captchaCode: string) => Promise<void>;
+  switchAccount: () => void;
   fetchMe: () => Promise<void>;
+  fetchMeWithTimeout: (timeoutMs?: number) => Promise<void>;
   fetchPermissions: () => Promise<void>;
+  /** Reload profile (offices/roles) and permissions — e.g. after admin edits your account. */
+  refreshSessionProfile: () => Promise<void>;
   initializeSession: () => Promise<void>;
   hasAction: (privilegeCode: string, actionCode: string) => boolean;
 }
@@ -55,16 +72,29 @@ export const useAuthStore = create<AuthState>()(
       currentOfficeId: null,
       actionGrants: [],
       isLoading: false,
+      sessionInitializing: false,
+      sessionInitFailed: false,
+      sessionLocked: false,
+      lockReason: null,
 
       setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
 
       setUser: (user) => {
         const offices = Array.isArray(user.offices) ? user.offices : [];
-        const officeId =
-          get().currentOfficeId ??
-          user.default_office_id ??
-          offices[0]?.office_id ??
-          null;
+        const prevOfficeId = get().currentOfficeId;
+        let officeId: string | null = null;
+
+        if (prevOfficeId && offices.some((o) => o.office_id === prevOfficeId)) {
+          officeId = prevOfficeId;
+        } else if (
+          user.default_office_id &&
+          offices.some((o) => o.office_id === user.default_office_id)
+        ) {
+          officeId = user.default_office_id;
+        } else {
+          officeId = offices[0]?.office_id ?? null;
+        }
+
         set({ user: { ...user, offices }, currentOfficeId: officeId });
       },
 
@@ -107,12 +137,93 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           currentOfficeId: null,
           actionGrants: [],
+          sessionInitializing: false,
+          sessionInitFailed: false,
+          sessionLocked: false,
+          lockReason: null,
         });
       },
 
+      fetchMeWithTimeout: async (timeoutMs = 12_000) => {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const res = await apiClient.get<User>('/auth/me', {
+            skipToast: true,
+            signal: controller.signal,
+          });
+          const data = res.data;
+          get().setUser({
+            user_id: data.user_id,
+            username: data.username,
+            email: data.email ?? '',
+            full_name: data.full_name ?? data.username,
+            badge_number: data.badge_number ?? '',
+            department: data.department ?? '',
+            roles: data.roles ?? [],
+            groups: data.groups ?? [],
+            clearance_level: data.clearance_level ?? 'UNCLASSIFIED',
+            jit_elevated: Boolean(data.jit_elevated),
+            offices: Array.isArray(data.offices) ? data.offices : [],
+            default_office_id: data.default_office_id ?? null,
+            profile_photo_url: data.profile_photo_url ?? null,
+          });
+          set({ sessionInitFailed: false });
+        } finally {
+          window.clearTimeout(timer);
+        }
+      },
+
+      lockSession: (reason) => {
+        const { user, accessToken, sessionLocked } = get();
+        if (sessionLocked || !accessToken) return;
+        if (!user) {
+          get().logout();
+          return;
+        }
+        set({
+          accessToken: null,
+          sessionLocked: true,
+          lockReason: reason,
+        });
+      },
+
+      unlockSession: async (password, captchaId, captchaCode) => {
+        const username = get().user?.username;
+        if (!username) {
+          throw new Error('No active user for unlock.');
+        }
+        set({ isLoading: true });
+        try {
+          const res = await apiClient.post(
+            '/auth/unlock',
+            {
+              username,
+              password,
+              captcha_id: captchaId,
+              captcha_code: captchaCode,
+            },
+            { skipToast: true }
+          );
+          set({
+            accessToken: res.data.access_token,
+            refreshToken: res.data.refresh_token,
+            sessionLocked: false,
+            lockReason: null,
+          });
+          await get().fetchMe();
+          await get().fetchPermissions();
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      switchAccount: () => {
+        get().logout();
+      },
+
       fetchMe: async () => {
-        const res = await apiClient.get<User>('/auth/me', { skipToast: true });
-        get().setUser(res.data);
+        await get().fetchMeWithTimeout();
       },
 
       fetchPermissions: async () => {
@@ -128,18 +239,32 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      refreshSessionProfile: async () => {
+        await get().fetchMe();
+        await get().fetchPermissions();
+      },
+
       initializeSession: async () => {
-        const { accessToken, user } = get();
-        if (!accessToken) return;
-        if (user) {
-          await get().fetchPermissions();
+        const { accessToken, user, sessionLocked, sessionInitializing } = get();
+
+        if (sessionLocked) {
+          if (!user) get().logout();
           return;
         }
+        if (!accessToken) return;
+        if (sessionInitializing) return;
+
+        set({ sessionInitializing: true, sessionInitFailed: false });
         try {
-          await get().fetchMe();
+          await get().fetchMeWithTimeout();
           await get().fetchPermissions();
         } catch {
-          get().logout();
+          set({ sessionInitFailed: true });
+          if (!get().user) {
+            get().logout();
+          }
+        } finally {
+          set({ sessionInitializing: false });
         }
       },
 
@@ -154,11 +279,14 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'iip-auth-storage',
       partialize: (state) => ({
-        accessToken: state.accessToken,
+        accessToken: state.sessionLocked ? null : state.accessToken,
         refreshToken: state.refreshToken,
         currentOfficeId: state.currentOfficeId,
+        sessionLocked: state.sessionLocked,
+        lockReason: state.lockReason,
+        user: state.user,
       }),
-      onRehydrateStorage: () => (_state, err) => {
+      onRehydrateStorage: () => (state, err) => {
         if (err) {
           console.error('[auth] failed to restore session from storage', err);
           try {
@@ -166,6 +294,12 @@ export const useAuthStore = create<AuthState>()(
           } catch {
             /* ignore */
           }
+          return;
+        }
+        if (state?.accessToken && !state.sessionLocked) {
+          queueMicrotask(() => {
+            void useAuthStore.getState().initializeSession();
+          });
         }
       },
     }
@@ -174,6 +308,11 @@ export const useAuthStore = create<AuthState>()(
 
 export function selectIsAuthenticated(state: AuthState): boolean {
   return Boolean(state.accessToken && state.user);
+}
+
+/** User may continue in the shell behind the lock overlay (no access token). */
+export function selectHasLockedSession(state: AuthState): boolean {
+  return Boolean(state.sessionLocked && state.user);
 }
 
 export function selectCurrentOfficeRole(state: AuthState): string | null {

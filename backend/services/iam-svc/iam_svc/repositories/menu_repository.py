@@ -17,7 +17,7 @@ class MenuRepository:
         stmt = select(Menu).options(
             selectinload(Menu.privilege),
             selectinload(Menu.children).selectinload(Menu.privilege),
-        ).order_by(Menu.section, Menu.sort_order)
+        ).order_by(Menu.sort_order, Menu.label)
         if not include_inactive:
             stmt = stmt.where(Menu.is_active.is_(True))
         result = await self.session.execute(stmt)
@@ -53,3 +53,8 @@ class MenuRepository:
     async def update(self, menu: Menu) -> Menu:
         await self.session.flush()
         return await self.get_by_id_or_error(menu.id)
+
+    async def delete(self, menu_id: str | uuid.UUID) -> None:
+        menu = await self.get_by_id_or_error(menu_id)
+        await self.session.delete(menu)
+        await self.session.flush()

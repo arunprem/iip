@@ -87,7 +87,7 @@ class PermissionService:
             select(Menu)
             .options(selectinload(Menu.privilege), selectinload(Menu.children))
             .where(Menu.is_active.is_(True), Menu.parent_id.is_(None))
-            .order_by(Menu.section, Menu.sort_order)
+            .order_by(Menu.sort_order, Menu.label)
         )
         result = await self.session.execute(stmt)
         root_menus = list(result.scalars().unique().all())

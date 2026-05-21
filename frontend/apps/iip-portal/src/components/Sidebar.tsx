@@ -112,12 +112,22 @@ interface SidebarProps {
 export function Sidebar({ user, className = '' }: SidebarProps) {
   const { data: menus, isLoading } = useNavMenus();
 
-  const bySection = (menus ?? []).reduce<Record<string, NavMenuItem[]>>((acc, item) => {
+  const sortedRoots = [...(menus ?? [])].sort(
+    (a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label)
+  );
+
+  const bySection = sortedRoots.reduce<Record<string, NavMenuItem[]>>((acc, item) => {
     const section = item.section || 'Menu';
     if (!acc[section]) acc[section] = [];
     acc[section].push(item);
     return acc;
   }, {});
+
+  const sectionEntries = Object.entries(bySection).sort(([, itemsA], [, itemsB]) => {
+    const minA = Math.min(...itemsA.map((i) => i.sort_order));
+    const minB = Math.min(...itemsB.map((i) => i.sort_order));
+    return minA - minB || itemsA[0].section.localeCompare(itemsB[0].section);
+  });
 
   return (
     <aside
@@ -136,8 +146,14 @@ export function Sidebar({ user, className = '' }: SidebarProps) {
         {isLoading && (
           <p className="text-sm text-iip-text-muted px-3">Loading navigation...</p>
         )}
-        {Object.entries(bySection).map(([section, items]) => (
-          <NavSection key={section} title={section} items={items} />
+        {sectionEntries.map(([section, items]) => (
+          <NavSection
+            key={section}
+            title={section}
+            items={[...items].sort(
+              (a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label)
+            )}
+          />
         ))}
       </nav>
     </aside>

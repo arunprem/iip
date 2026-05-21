@@ -11,6 +11,7 @@ from iam_svc.models.associations import AssocBase
 if TYPE_CHECKING:
     from iam_svc.models.office import Office
     from iam_svc.models.role import Role
+    from iam_svc.models.user import User
 
 
 class UserOfficeRole(AssocBase):
@@ -30,5 +31,6 @@ class UserOfficeRole(AssocBase):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    user: Mapped["User"] = relationship("User", back_populates="office_assignments")
     office: Mapped["Office"] = relationship("Office", back_populates="user_assignments", lazy="joined")
     role: Mapped["Role"] = relationship("Role", lazy="joined")

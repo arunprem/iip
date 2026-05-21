@@ -1,10 +1,15 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
+
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, Table, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from iip_core.db import Base
 from iam_svc.models.role import Role
+
+if TYPE_CHECKING:
+    from iam_svc.models.user_office_role import UserOfficeRole
 
 user_roles = Table(
     "user_roles",
@@ -33,10 +38,17 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     mfa_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    profile_photo_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
 
     roles: Mapped[List["Role"]] = relationship(
-        "Role", 
+        "Role",
         secondary=user_roles,
         foreign_keys=[user_roles.c.user_id, user_roles.c.role_id],
-        lazy="selectin"
+        lazy="selectin",
+    )
+    office_assignments: Mapped[List["UserOfficeRole"]] = relationship(
+        "UserOfficeRole",
+        back_populates="user",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )

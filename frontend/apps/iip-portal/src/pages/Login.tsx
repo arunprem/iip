@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
-import { apiClient } from '../api/client';
+import { fetchCaptchaImage } from '../api/captcha';
 import { useThemeStore } from '../stores/themeStore';
+import { sanitizeCaptchaInput } from '../utils/captchaInput';
 import { getLoginErrorMessage } from '../utils/loginApiErrors';
 import {
   validateLoginField,
@@ -80,10 +81,7 @@ export default function Login() {
     setCaptchaLoading(true);
     setCaptchaImage('');
     try {
-      const { data } = await apiClient.get<{ captcha_id: string; image_base64: string }>(
-        '/captcha',
-        { skipToast: true }
-      );
+      const data = await fetchCaptchaImage();
       setCaptchaId(data.captcha_id);
       setCaptchaImage(data.image_base64);
       setCaptchaCode('');
@@ -151,7 +149,7 @@ export default function Login() {
     if (hasLoginErrors(errors)) return;
 
     try {
-      await login(username.trim(), password, captchaId, captchaCode.trim());
+      await login(username.trim(), password, captchaId, sanitizeCaptchaInput(captchaCode));
     } catch (err: unknown) {
       setError(getLoginErrorMessage(err));
       await fetchCaptcha();
@@ -289,14 +287,14 @@ export default function Login() {
               </p>
 
               <div className="flex items-center gap-3 mb-3">
-                <div className="h-[52px] w-[200px] rounded-lg border border-iip-border bg-iip-surface overflow-hidden shadow-inner flex items-center justify-center shrink-0">
+                <div className="h-[52px] w-[200px] rounded-lg bg-white overflow-hidden flex items-center justify-center shrink-0">
                   {captchaLoading ? (
                     <div className="h-5 w-5 border-2 border-iip-primary/30 border-t-iip-primary rounded-full animate-spin" />
                   ) : captchaImage ? (
                     <img
                       src={captchaImage}
                       alt="Security verification code"
-                      className="h-full w-full object-cover object-center select-none"
+                      className="max-h-full max-w-full object-contain select-none"
                       draggable={false}
                     />
                   ) : (
@@ -323,14 +321,18 @@ export default function Login() {
                   name="captchaCode"
                   type="text"
                   value={captchaCode}
+                  maxLength={8}
+                  inputMode="text"
+                  autoCapitalize="off"
+                  autoCorrect="off"
                   onChange={(e) => {
-                    setCaptchaCode(e.target.value);
+                    setCaptchaCode(sanitizeCaptchaInput(e.target.value));
                     clearFieldError('captchaCode');
                   }}
                   onBlur={() => handleBlur('captchaCode')}
-                  disabled={isLoading || captchaLoading}
-                  className={inputClass('captchaCode', 'px-3.5 py-3 tracking-widest')}
-                  placeholder="Enter Security Code"
+                  disabled={isLoading || captchaLoading || !captchaId}
+                  className={inputClass('captchaCode', 'px-3.5 py-3 tracking-widest font-mono text-center')}
+                  placeholder="Enter security code"
                   autoComplete="off"
                   spellCheck={false}
                   aria-invalid={validated && !!fieldErrors.captchaCode}

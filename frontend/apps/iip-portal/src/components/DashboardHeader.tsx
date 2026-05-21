@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Bell,
   ChevronDown,
+  Lock,
   LogOut,
   Menu,
   Moon,
@@ -110,6 +111,9 @@ const typeStyles: Record<Notification['type'], string> = {
 export function DashboardHeader({ user, onMenuClick }: DashboardHeaderProps) {
   const navigate = useNavigate();
   const logout = useAuthStore((state) => state.logout);
+  const lockSession = useAuthStore((state) => state.lockSession);
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const sessionLocked = useAuthStore((state) => state.sessionLocked);
   const theme = useThemeStore((state) => state.theme);
   const toggleTheme = useThemeStore((state) => state.toggleTheme);
 
@@ -150,6 +154,13 @@ export function DashboardHeader({ user, onMenuClick }: DashboardHeaderProps) {
     navigate('/login', { replace: true });
   };
 
+  const handleLockSession = () => {
+    closeAll();
+    lockSession('idle');
+  };
+
+  const canLockSession = Boolean(accessToken && !sessionLocked);
+
   return (
     <header className="relative z-40 h-16 shrink-0 bg-iip-surface border-b border-iip-border flex items-center justify-between gap-4 px-4 md:px-6">
       <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -182,6 +193,17 @@ export function DashboardHeader({ user, onMenuClick }: DashboardHeaderProps) {
 
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <OfficeSelector />
+        {canLockSession && (
+          <button
+            type="button"
+            onClick={handleLockSession}
+            className="p-2.5 rounded-lg text-iip-text-muted hover:bg-iip-surface-hover hover:text-iip-text border border-transparent"
+            title="Lock session (step away from screen)"
+            aria-label="Lock session"
+          >
+            <Lock size={18} aria-hidden />
+          </button>
+        )}
         <button
           type="button"
           onClick={toggleTheme}
@@ -343,11 +365,25 @@ export function DashboardHeader({ user, onMenuClick }: DashboardHeaderProps) {
                 type="button"
                 role="menuitem"
                 className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-iip-text hover:bg-iip-surface-hover transition-colors"
-                onClick={closeAll}
+                onClick={() => {
+                  closeAll();
+                  navigate('/profile');
+                }}
               >
                 <User size={16} className="text-iip-text-muted" />
                 My profile
               </button>
+              {canLockSession && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-iip-text hover:bg-iip-surface-hover transition-colors"
+                  onClick={handleLockSession}
+                >
+                  <Lock size={16} className="text-iip-text-muted" />
+                  Lock session
+                </button>
+              )}
               {user.jitElevated && (
                 <div className="mx-4 my-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
                   JIT session elevated

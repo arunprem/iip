@@ -5,7 +5,12 @@ from iip_core.settings import get_settings
 async def get_redis() -> AsyncGenerator[redis.Redis, None]:
     settings = get_settings()
     redis_url = str(settings.redis_url)
-    client = redis.from_url(redis_url, decode_responses=False)
+    client = redis.from_url(
+        redis_url,
+        decode_responses=False,
+        socket_connect_timeout=3,
+        socket_timeout=3,
+    )
     try:
         yield client
     finally:

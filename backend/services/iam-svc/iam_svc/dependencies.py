@@ -72,3 +72,15 @@ def require_system_admin_role(
             detail="SYSTEM_ADMIN or IT_ADMIN role is required for this office.",
         )
     return role
+
+
+def require_system_admin_user(
+    current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
+) -> CurrentUser:
+    """System admin check without requiring X-Office-Id (global reference data)."""
+    if not any(r in ("SYSTEM_ADMIN", "IT_ADMIN") for r in current_user.roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="SYSTEM_ADMIN or IT_ADMIN role is required.",
+        )
+    return current_user

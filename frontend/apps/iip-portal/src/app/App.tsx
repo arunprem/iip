@@ -7,9 +7,12 @@ import { DashboardHeader } from '../components/DashboardHeader'
 import { Sidebar } from '../components/Sidebar'
 import type { UserContext } from '../components/AppShell'
 import { useThemeStore } from '../stores/themeStore'
+import { AuthorizationGate } from '../components/AuthorizationGate'
 import { SystemAdminRoute } from '../components/SystemAdminRoute'
-import { selectCurrentOfficeRole, useAuthStore } from '../stores/authStore'
+import { selectCurrentOfficeRole, selectHasLockedSession, useAuthStore } from '../stores/authStore'
 import { useAuthHydrated } from '../hooks/useAuthHydrated'
+import { useSessionLock } from '../hooks/useSessionLock'
+import { SessionLockScreen } from '../components/SessionLockScreen'
 import { ToastContainer } from '../components/ToastContainer'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import Login from '../pages/Login'
@@ -26,6 +29,12 @@ const IAMAdmin           = React.lazy(() => import('../pages/IAMAdmin'))
 const RoleManagement     = React.lazy(() => import('../pages/system/RoleManagement'))
 const PrivilegeManagement = React.lazy(() => import('../pages/system/PrivilegeManagement'))
 const MenuManagement     = React.lazy(() => import('../pages/system/MenuManagement'))
+const OfficeManagement   = React.lazy(() => import('../pages/system/OfficeManagement'))
+const UnitTypeManagement = React.lazy(() => import('../pages/system/UnitTypeManagement'))
+const RankManagement     = React.lazy(() => import('../pages/system/RankManagement'))
+const UserManagement     = React.lazy(() => import('../pages/system/UserManagement'))
+const MyProfile          = React.lazy(() => import('../pages/MyProfile'))
+const UnauthorizedPage   = React.lazy(() => import('../pages/UnauthorizedPage'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,10 +45,22 @@ const queryClient = new QueryClient({
   },
 })
 
+function UnauthorizedRedirect() {
+  const location = useLocation()
+  return (
+    <Navigate
+      to="/unauthorized"
+      replace
+      state={{ from: location.pathname, reason: 'unknown' as const }}
+    />
+  )
+}
+
 // ─── Protected Route Wrapper ──────────────────────────────────────────────────
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const authHydrated = useAuthHydrated()
   const accessToken = useAuthStore((state) => state.accessToken)
+  const hasLockedSession = useAuthStore(selectHasLockedSession)
   const location = useLocation()
 
   if (!authHydrated) {
@@ -50,7 +71,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     )
   }
 
-  if (!accessToken) {
+  if (!accessToken && !hasLockedSession) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
@@ -61,28 +82,67 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 const AuthenticatedLayout = () => {
   const storeUser = useAuthStore((state) => state.user)
   const accessToken = useAuthStore((state) => state.accessToken)
+  const sessionLocked = useAuthStore((state) => state.sessionLocked)
+  const sessionInitializing = useAuthStore((state) => state.sessionInitializing)
+  const sessionInitFailed = useAuthStore((state) => state.sessionInitFailed)
   const initializeSession = useAuthStore((state) => state.initializeSession)
+  const logout = useAuthStore((state) => state.logout)
+  const officeRole = useAuthStore(selectCurrentOfficeRole)
+  const authHydrated = useAuthHydrated()
+
+  useSessionLock(Boolean(accessToken && storeUser && !sessionLocked))
 
   useEffect(() => {
-    void initializeSession()
-  }, [initializeSession])
+    if (!authHydrated) return
+    if (sessionLocked && !storeUser) {
+      logout()
+      return
+    }
+    if (accessToken && !sessionLocked) {
+      void initializeSession()
+    }
+  }, [authHydrated, accessToken, sessionLocked, storeUser, initializeSession, logout])
 
-  if (!accessToken) {
+  if (!accessToken && !sessionLocked) {
     return <Navigate to="/login" replace />
   }
 
   if (!storeUser) {
+    if (sessionInitFailed && !sessionInitializing) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-iip-bg px-6 text-center">
+          <p className="text-sm text-iip-text-muted max-w-md">
+            Could not load your profile. Check that IAM service is running on port 8010, then sign in
+            again.
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              className="admin-btn admin-btn-secondary"
+              onClick={() => void initializeSession()}
+            >
+              Retry
+            </button>
+            <button type="button" className="admin-btn admin-btn-primary" onClick={() => logout()}>
+              Sign in again
+            </button>
+          </div>
+        </div>
+      )
+    }
+    if (!sessionInitializing && !accessToken) {
+      return <Navigate to="/login" replace />
+    }
     return (
-      <div className="min-h-screen flex items-center justify-center bg-iip-bg text-iip-text-muted text-sm">
-        Loading profile...
+      <div className="min-h-screen flex flex-col items-center justify-center gap-2 bg-iip-bg text-iip-text-muted text-sm">
+        <div className="h-8 w-8 border-2 border-iip-primary/30 border-t-iip-primary rounded-full animate-spin" />
+        <span>Loading profile…</span>
       </div>
     )
   }
 
-  const officeRole = useAuthStore(selectCurrentOfficeRole)
-
   const userContext: UserContext = {
-    name: storeUser.username,
+    name: storeUser.full_name || storeUser.username,
     username: storeUser.username,
     role: officeRole ?? 'USER',
     roles: officeRole ? [officeRole] : storeUser.roles,
@@ -111,40 +171,76 @@ const AuthenticatedLayout = () => {
               }
             >
             <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<DirectorDashboard />} />
-              <Route path="/watch-console" element={<WatchConsole />} />
-              <Route path="/cases/:id?" element={<CaseFile />} />
-              <Route path="/analyst-workbench" element={<AnalystWorkbench />} />
-              <Route path="/hotspot-console" element={<HotspotConsole />} />
-              <Route path="/kg-canvas" element={<KGCanvas />} />
-              <Route path="/humint-vault" element={<HumintVault />} />
-              <Route path="/iam-admin" element={<IAMAdmin />} />
-              <Route
-                path="/system/roles"
-                element={
-                  <SystemAdminRoute>
-                    <RoleManagement />
-                  </SystemAdminRoute>
-                }
-              />
-              <Route
-                path="/system/privileges"
-                element={
-                  <SystemAdminRoute>
-                    <PrivilegeManagement />
-                  </SystemAdminRoute>
-                }
-              />
-              <Route
-                path="/system/menus"
-                element={
-                  <SystemAdminRoute>
-                    <MenuManagement />
-                  </SystemAdminRoute>
-                }
-              />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              <Route element={<AuthorizationGate />}>
+                <Route path="/unauthorized" element={<UnauthorizedPage />} />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<DirectorDashboard />} />
+                <Route path="/profile" element={<MyProfile />} />
+                <Route path="/watch-console" element={<WatchConsole />} />
+                <Route path="/cases/:id?" element={<CaseFile />} />
+                <Route path="/analyst-workbench" element={<AnalystWorkbench />} />
+                <Route path="/hotspot-console" element={<HotspotConsole />} />
+                <Route path="/kg-canvas" element={<KGCanvas />} />
+                <Route path="/humint-vault" element={<HumintVault />} />
+                <Route path="/iam-admin" element={<IAMAdmin />} />
+                <Route
+                  path="/system/roles"
+                  element={
+                    <SystemAdminRoute>
+                      <RoleManagement />
+                    </SystemAdminRoute>
+                  }
+                />
+                <Route
+                  path="/system/privileges"
+                  element={
+                    <SystemAdminRoute>
+                      <PrivilegeManagement />
+                    </SystemAdminRoute>
+                  }
+                />
+                <Route
+                  path="/system/menus"
+                  element={
+                    <SystemAdminRoute>
+                      <MenuManagement />
+                    </SystemAdminRoute>
+                  }
+                />
+                <Route
+                  path="/system/offices"
+                  element={
+                    <SystemAdminRoute>
+                      <OfficeManagement />
+                    </SystemAdminRoute>
+                  }
+                />
+                <Route
+                  path="/system/unit-types"
+                  element={
+                    <SystemAdminRoute>
+                      <UnitTypeManagement />
+                    </SystemAdminRoute>
+                  }
+                />
+                <Route
+                  path="/system/ranks"
+                  element={
+                    <SystemAdminRoute>
+                      <RankManagement />
+                    </SystemAdminRoute>
+                  }
+                />
+                <Route
+                  path="/system/users"
+                  element={
+                    <SystemAdminRoute>
+                      <UserManagement />
+                    </SystemAdminRoute>
+                  }
+                />
+                <Route path="*" element={<UnauthorizedRedirect />} />
+              </Route>
             </Routes>
             </React.Suspense>
           </main>
@@ -152,6 +248,13 @@ const AuthenticatedLayout = () => {
       </div>
     </AppShell>
   )
+}
+
+function SessionLockGate() {
+  const sessionLocked = useAuthStore((state) => state.sessionLocked)
+  const user = useAuthStore((state) => state.user)
+  if (!sessionLocked || !user) return null
+  return <SessionLockScreen />
 }
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
@@ -167,7 +270,13 @@ export function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ToastContainer />
-        <BrowserRouter>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
+        <SessionLockGate />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route

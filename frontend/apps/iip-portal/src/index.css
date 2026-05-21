@@ -108,8 +108,20 @@
     @apply px-5 py-5;
   }
 
+  .admin-user-assignments {
+    @apply border-t border-iip-border pt-5;
+  }
+
+  .admin-user-assignment-row {
+    @apply transition-colors;
+  }
+
+  .admin-office-search__list {
+    scrollbar-width: thin;
+  }
+
   .admin-form-panel-footer {
-    @apply px-5 py-4 border-t border-iip-border bg-iip-surface/60 flex flex-wrap items-center justify-end gap-3;
+    @apply px-5 py-3.5 border-t border-iip-border bg-iip-surface flex flex-wrap items-center gap-3;
   }
 
   .form-control.is-invalid {
@@ -135,6 +147,344 @@
 
   .dashboard-card {
     @apply bg-iip-surface rounded-2xl border border-iip-border shadow-sm;
+  }
+
+  .admin-tab-bar {
+    @apply inline-flex flex-wrap gap-1 p-1.5 rounded-xl bg-iip-surface border border-iip-border shadow-sm;
+  }
+
+  .admin-tab-btn {
+    @apply inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-150;
+  }
+
+  .admin-tab-btn-active {
+    @apply bg-iip-primary text-white shadow-sm;
+  }
+
+  .admin-tab-btn-inactive {
+    @apply text-iip-text-muted hover:text-iip-text hover:bg-iip-surface-hover;
+  }
+
+  .admin-tip-banner {
+    @apply flex gap-3 rounded-xl border px-4 py-3.5 text-sm leading-relaxed;
+    @apply border-iip-primary/25 bg-iip-primary/[0.06] text-iip-text;
+  }
+
+  .admin-section-title {
+    @apply text-sm font-semibold text-iip-text;
+  }
+
+  .admin-section-desc {
+    @apply text-xs text-iip-text-muted mt-1 leading-relaxed;
+  }
+
+  .admin-action-chip {
+    @apply inline-flex items-center gap-2 rounded-lg border border-iip-border bg-iip-bg px-3 py-2 text-sm shadow-sm;
+  }
+
+  .admin-privilege-card-header {
+    @apply px-5 py-4 border-b border-iip-border bg-gradient-to-r from-iip-primary/[0.06] to-transparent;
+  }
+
+  .admin-matrix-panel {
+    @apply mx-4 mb-4 overflow-hidden rounded-xl border border-iip-border bg-iip-bg/30;
+  }
+
+  .admin-matrix-checkbox {
+    @apply h-[1.125rem] w-[1.125rem] rounded border-iip-border text-iip-primary cursor-pointer;
+    @apply focus:ring-2 focus:ring-iip-primary/30 focus:ring-offset-0;
+  }
+
+  .admin-fab-save {
+    @apply fixed z-40 bottom-6 right-6 inline-flex items-center gap-2.5 px-5 py-3 rounded-full;
+    @apply bg-iip-primary text-white text-sm font-semibold shadow-lg shadow-iip-primary/25;
+    @apply hover:bg-iip-primary-hover hover:shadow-xl transition-all duration-200;
+    @apply disabled:opacity-45 disabled:shadow-md disabled:cursor-not-allowed;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-iip-primary focus-visible:ring-offset-2;
+  }
+
+  .admin-fab-save--dirty {
+    @apply ring-2 ring-amber-400/80 ring-offset-2 ring-offset-iip-bg;
+  }
+
+  .admin-access-layout {
+    @apply grid grid-cols-1 lg:grid-cols-[minmax(240px,280px)_1fr] min-h-[min(70vh,520px)];
+  }
+
+  /* Office page: fill main area down to app footer (header 4rem + footer 1.75rem + main padding) */
+  .admin-office-page {
+    height: calc(100dvh - 8.75rem);
+    max-height: calc(100dvh - 8.75rem);
+    @apply flex flex-col min-h-0 -mx-4 px-4 md:-mx-6 md:px-6;
+  }
+
+  @media (min-width: 768px) {
+    .admin-office-page {
+      height: calc(100dvh - 9.75rem);
+      max-height: calc(100dvh - 9.75rem);
+    }
+  }
+
+  .admin-office-layout {
+    @apply grid grid-cols-1 lg:grid-cols-[minmax(380px,46%)_minmax(0,1fr)] gap-4 flex-1 min-h-0 h-full items-stretch;
+  }
+
+  .admin-office-tree-panel {
+    @apply flex flex-col h-full min-h-0 rounded-2xl border border-iip-border bg-iip-surface shadow-sm overflow-hidden;
+  }
+
+  .admin-office-tree-toolbar {
+    @apply flex items-center gap-2 p-3 border-b border-iip-border bg-iip-surface/80;
+  }
+
+  .admin-office-count-badge {
+    @apply shrink-0 min-w-[2rem] px-2 py-1 rounded-lg text-xs font-semibold tabular-nums text-center;
+    @apply bg-iip-primary/10 text-iip-primary border border-iip-primary/20;
+  }
+
+  .admin-office-tree-scroll {
+    @apply flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2.5 py-1;
+  }
+
+  .admin-office-tree-scroll--dragging {
+    @apply bg-iip-primary/[0.03];
+  }
+
+  .admin-office-tree-row-wrap {
+    @apply relative;
+  }
+
+  .admin-office-tree-row-wrap--dragging {
+    @apply opacity-40;
+  }
+
+  .admin-office-tree-row {
+    @apply flex items-center gap-2 w-full rounded-md px-2.5 py-0 text-sm leading-tight transition-colors;
+    @apply hover:bg-iip-surface-hover text-iip-text min-h-[1.75rem];
+  }
+
+  .admin-office-tree-label {
+    @apply flex flex-1 items-center gap-3 min-w-0 text-left;
+  }
+
+  .admin-office-tree-icon {
+    @apply opacity-60;
+  }
+
+  .admin-office-tree-name {
+    @apply font-medium truncate min-w-0 flex-1;
+  }
+
+  .admin-office-tree-meta {
+    @apply flex shrink-0 items-center gap-2 pl-3 ml-1 border-l border-iip-border/80;
+  }
+
+  .admin-office-tree-ncrb {
+    @apply text-[11px] font-mono leading-none text-iip-primary px-1.5 py-0 rounded bg-iip-primary/10;
+  }
+
+  .admin-office-tree-short {
+    @apply text-[11px] font-mono leading-none text-iip-text-muted px-1.5 py-0 rounded bg-iip-bg/80;
+  }
+
+  .admin-office-tree-meta .admin-office-badge {
+    @apply px-2 py-0 leading-tight;
+  }
+
+  .admin-office-tree-row--selected {
+    @apply bg-iip-primary/10 text-iip-primary ring-1 ring-iip-primary/25;
+  }
+
+  .admin-office-tree-row--inactive {
+    @apply opacity-50;
+  }
+
+  .admin-office-tree-row--drop-target {
+    @apply bg-iip-primary/15 ring-2 ring-iip-primary/40 ring-inset;
+  }
+
+  .admin-office-drag-handle {
+    @apply px-1 py-0 rounded-md cursor-grab text-iip-text-muted hover:text-iip-text hover:bg-iip-surface-active;
+    @apply active:cursor-grabbing;
+  }
+
+  .admin-office-drop-line {
+    @apply absolute left-2 right-2 h-0.5 rounded-full bg-iip-primary z-10 pointer-events-none;
+  }
+
+  .admin-office-drop-line--before {
+    @apply top-0;
+  }
+
+  .admin-office-drop-line--after {
+    @apply bottom-0;
+  }
+
+  .admin-office-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide;
+    @apply bg-iip-surface-active text-iip-text-muted border border-iip-border;
+  }
+
+  .admin-office-badge--parent {
+    @apply bg-amber-500/10 text-amber-700 border-amber-500/25;
+  }
+
+  :root.dark .admin-office-badge--parent {
+    @apply text-amber-300;
+  }
+
+  .admin-office-badge--active {
+    @apply bg-emerald-500/10 text-emerald-700 border-emerald-500/25;
+  }
+
+  :root.dark .admin-office-badge--active {
+    @apply text-emerald-300;
+  }
+
+  .admin-office-badge--inactive {
+    @apply bg-red-500/10 text-red-600 border-red-500/25;
+  }
+
+  :root.dark .admin-office-badge--inactive {
+    @apply text-red-300;
+  }
+
+  .admin-office-tree-meta {
+    @apply px-3 py-2 border-t border-iip-border bg-iip-bg/60 text-[11px] text-iip-text-muted;
+  }
+
+  .admin-office-tree-meta strong {
+    @apply text-iip-text font-medium mr-1;
+  }
+
+  .admin-office-form-panel {
+    @apply flex flex-col h-full min-h-0 rounded-xl border border-iip-border bg-iip-surface shadow-sm overflow-hidden;
+  }
+
+  .admin-office-form-inner {
+    @apply flex flex-col flex-1 min-h-0 border-0 shadow-none rounded-none bg-transparent;
+  }
+
+  .admin-office-form-header {
+    @apply px-4 py-3;
+  }
+
+  .admin-office-form-body {
+    @apply flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3;
+  }
+
+  .admin-office-form-grid {
+    @apply grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4;
+  }
+
+  .admin-office-form-body .form-control {
+    @apply min-h-[2.35rem] py-2;
+  }
+
+  .admin-office-form-body .admin-form-hint {
+    @apply mt-0.5;
+  }
+
+  .admin-office-flags {
+    @apply flex flex-wrap gap-3 sm:col-span-2 pt-1;
+  }
+
+  .admin-office-flag {
+    @apply inline-flex items-center gap-2.5 rounded-lg border border-iip-border bg-iip-bg px-4 py-2.5 text-sm cursor-pointer;
+    @apply hover:border-iip-primary/30 hover:bg-iip-surface-hover transition-colors;
+  }
+
+  .admin-office-flag:has(input:checked) {
+    @apply border-iip-primary/35 bg-iip-primary/10;
+  }
+
+  .admin-office-flag__label {
+    @apply text-iip-text font-medium select-none;
+  }
+
+  .admin-office-empty-state {
+    @apply flex flex-col flex-1 items-center justify-center text-center py-8 px-4 text-iip-text-muted;
+  }
+
+  /* Admin action buttons (used across system pages) */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all duration-150;
+    @apply px-4 py-2.5 min-h-[2.5rem] whitespace-nowrap;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-iip-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-iip-bg;
+    @apply disabled:opacity-45 disabled:cursor-not-allowed disabled:shadow-none;
+  }
+
+  .btn-sm {
+    @apply px-3.5 py-2 min-h-[2.35rem] text-[13px] gap-1.5;
+  }
+
+  .btn-xs {
+    @apply px-2.5 py-1 min-h-[1.9rem] text-xs font-semibold gap-1;
+  }
+
+  .btn-icon {
+    @apply p-2 min-h-[2.25rem] min-w-[2.25rem] gap-0;
+  }
+
+  .btn-active {
+    @apply bg-iip-primary/10 text-iip-primary border-iip-primary/35 shadow-sm;
+  }
+
+  :root.dark .btn-active {
+    @apply bg-iip-primary/20 border-iip-primary/40;
+  }
+
+  .btn-primary {
+    @apply btn bg-iip-primary text-white border border-transparent shadow-md shadow-iip-primary/25;
+    @apply hover:bg-iip-primary-hover hover:shadow-lg hover:shadow-iip-primary/30;
+    @apply active:scale-[0.98];
+  }
+
+  .btn-secondary {
+    @apply btn bg-iip-surface text-iip-text border border-iip-border shadow-sm;
+    @apply hover:bg-iip-surface-hover hover:border-iip-border-hover;
+    @apply active:scale-[0.98];
+  }
+
+  .btn-danger {
+    @apply btn bg-red-500/10 text-red-700 border border-red-500/35 shadow-sm;
+    @apply hover:bg-red-500/15 hover:border-red-500/50;
+    @apply active:scale-[0.98];
+  }
+
+  :root.dark .btn-danger {
+    @apply text-red-300 border-red-500/40;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-iip-text-muted border border-iip-border/80 shadow-none;
+    @apply hover:bg-iip-surface-hover hover:text-iip-text hover:border-iip-border;
+    @apply active:scale-[0.98];
+  }
+
+  .admin-toolbar {
+    @apply inline-flex flex-wrap items-center gap-2 rounded-xl border border-iip-border bg-iip-surface p-1.5 shadow-sm;
+  }
+
+  .admin-toolbar-group {
+    @apply inline-flex flex-wrap items-center gap-2;
+  }
+
+  .admin-toolbar-divider {
+    @apply hidden sm:block w-px self-stretch min-h-[2rem] bg-iip-border shrink-0;
+  }
+
+  .admin-form-actions {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .admin-form-actions-spacer {
+    @apply flex-1 min-w-[1rem];
+  }
+
+  .admin-office-form-footer {
+    @apply shrink-0 mt-auto px-4 py-3.5 border-t border-iip-border bg-iip-surface;
+    @apply flex flex-wrap items-center gap-3;
   }
 
   /* Classification banners — aligned with IIP / TailAdmin theme */

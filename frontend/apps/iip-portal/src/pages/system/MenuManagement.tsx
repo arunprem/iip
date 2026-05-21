@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Menu as MenuIcon, Pencil, Plus, Save, X } from 'lucide-react';
+import { Menu as MenuIcon, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { confirmDeleteMenu } from '../../utils/confirmDialog';
 import { apiClient } from '../../api/client';
 import { AdminPageLayout } from '../../components/admin/AdminPageLayout';
-import { AdminDataTable } from '../../components/admin/AdminDataTable';
+import { AdminInteractiveDataTable } from '../../components/admin/AdminInteractiveDataTable';
+import { AdminButton } from '../../components/admin/AdminButton';
 import { AdminFormField } from '../../components/admin/AdminFormField';
 import { MenuIconPicker } from '../../components/admin/MenuIconPicker';
 import { useAuthStore } from '../../stores/authStore';
@@ -59,8 +61,12 @@ function menuToForm(m: MenuRow) {
 export default function MenuManagement() {
   const queryClient = useQueryClient();
   const currentOfficeId = useAuthStore((s) => s.currentOfficeId);
+  const formPanelRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState(emptyForm);
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
+  const [sectionFilter, setSectionFilter] = useState('all');
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
 
   const { data: menus, isLoading } = useQuery({
     queryKey: ['admin-menus', currentOfficeId],
@@ -85,6 +91,31 @@ export default function MenuManagement() {
   const flatMenus = menus ?? [];
   const isEditing = Boolean(editingMenuId);
 
+  const menuById = useMemo(() => {
+    const map = new Map<string, MenuRow>();
+    for (const m of flatMenus) map.set(m.id, m);
+    return map;
+  }, [flatMenus]);
+
+  const sectionOptions = useMemo(() => {
+    const sections = [...new Set(flatMenus.map((m) => m.section))].sort();
+    return [
+      { value: 'all', label: 'All sections' },
+      ...sections.map((s) => ({ value: s, label: s })),
+    ];
+  }, [flatMenus]);
+
+  const filteredMenus = useMemo(() => {
+    return flatMenus.filter((m) => {
+      if (sectionFilter !== 'all' && m.section !== sectionFilter) return false;
+      if (activeFilter === 'active' && !m.is_active) return false;
+      if (activeFilter === 'inactive' && m.is_active) return false;
+      if (typeFilter === 'group' && !m.is_group) return false;
+      if (typeFilter === 'item' && m.is_group) return false;
+      return true;
+    });
+  }, [flatMenus, sectionFilter, activeFilter, typeFilter]);
+
   const parentOptions = useMemo(
     () =>
       flatMenus.filter(
@@ -102,10 +133,20 @@ export default function MenuManagement() {
     setEditingMenuId(null);
   };
 
+  const focusEditForm = () => {
+    formPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.setTimeout(() => {
+      const labelInput = document.getElementById('menu-label');
+      if (labelInput instanceof HTMLInputElement) {
+        labelInput.focus({ preventScroll: true });
+      }
+    }, 350);
+  };
+
   const startEdit = (menu: MenuRow) => {
     setEditingMenuId(menu.id);
     setForm(menuToForm(menu));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    requestAnimationFrame(() => focusEditForm());
   };
 
   const invalidateMenus = async () => {
@@ -160,6 +201,37 @@ export default function MenuManagement() {
     onSuccess: invalidateMenus,
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/iam/menus/${id}`);
+    },
+    onSuccess: async (_data, deletedId) => {
+      if (editingMenuId === deletedId) resetForm();
+      await invalidateMenus();
+    },
+  });
+
+  const childCountByParent = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const m of flatMenus) {
+      if (m.parent_id) {
+        counts[m.parent_id] = (counts[m.parent_id] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [flatMenus]);
+
+  const handleDelete = async (menu: MenuRow) => {
+    const confirmed = await confirmDeleteMenu({
+      label: menu.label,
+      menu_key: menu.menu_key,
+      is_group: menu.is_group,
+      childCount: childCountByParent[menu.id] ?? 0,
+    });
+    if (!confirmed) return;
+    deleteMutation.mutate(menu.id);
+  };
+
   const formPending = createMutation.isPending || updateMutation.isPending;
 
   return (
@@ -169,7 +241,7 @@ export default function MenuManagement() {
       icon={MenuIcon}
     >
       <div className="dashboard-card mb-4 overflow-hidden">
-        <div className="admin-form-panel">
+        <div ref={formPanelRef} className="admin-form-panel scroll-mt-4" tabIndex={-1}>
           <div className="admin-form-panel-header">
             <p className="text-sm font-semibold text-iip-text">
               {isEditing ? 'Edit menu item' : 'New menu item'}
@@ -341,39 +413,29 @@ export default function MenuManagement() {
           </div>
 
           <div className="admin-form-panel-footer">
-            {isEditing ? (
-              <button
-                type="button"
-                onClick={resetForm}
-                disabled={formPending}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-iip-border text-sm font-medium text-iip-text hover:bg-iip-surface-hover transition-colors disabled:opacity-50"
-              >
-                <X size={16} />
-                Cancel
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={resetForm}
-                disabled={formPending}
-                className="px-4 py-2.5 rounded-lg border border-iip-border text-sm font-medium text-iip-text hover:bg-iip-surface-hover transition-colors disabled:opacity-50"
-              >
-                Clear
-              </button>
-            )}
-            <button
-              type="button"
+            <AdminButton
+              variant="ghost"
+              size="sm"
+              onClick={resetForm}
+              disabled={formPending}
+            >
+              {isEditing ? <X size={15} aria-hidden /> : null}
+              {isEditing ? 'Cancel' : 'Clear'}
+            </AdminButton>
+            <span className="admin-form-actions-spacer flex-1" aria-hidden />
+            <AdminButton
+              variant="primary"
+              size="sm"
               onClick={() => (isEditing ? updateMutation.mutate() : createMutation.mutate())}
               disabled={formPending || (isEditing ? !canSave : !canCreate)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-iip-primary text-white text-sm font-medium hover:bg-iip-primary-hover disabled:opacity-50 transition-colors"
             >
-              {isEditing ? <Save size={16} /> : <Plus size={16} />}
+              {isEditing ? <Save size={15} aria-hidden /> : <Plus size={15} aria-hidden />}
               {formPending
                 ? 'Saving…'
                 : isEditing
                   ? 'Save changes'
                   : 'Create menu item'}
-            </button>
+            </AdminButton>
           </div>
         </div>
       </div>
@@ -382,17 +444,78 @@ export default function MenuManagement() {
         <div className="px-5 py-4 border-b border-iip-border">
           <p className="text-sm font-semibold text-iip-text">All menus</p>
           <p className="text-xs text-iip-text-muted mt-1">
-            Click Edit to load an item into the form above.
+            Search, sort, and filter below. Click Edit to load an item into the form above.
           </p>
         </div>
-        <AdminDataTable
+        <AdminInteractiveDataTable
           isLoading={isLoading}
-          data={flatMenus}
+          data={filteredMenus}
           keyField={(m) => m.id}
+          searchPlaceholder="Search by key, label, path, section…"
+          defaultSort={{ key: 'sort_order', direction: 'asc' }}
+          getSearchText={(m) => {
+            const parent = m.parent_id ? menuById.get(m.parent_id) : undefined;
+            return [
+              m.menu_key,
+              m.label,
+              m.path ?? '',
+              m.section,
+              m.privilege_code ?? '',
+              m.icon,
+              parent?.label ?? '',
+              parent?.menu_key ?? '',
+            ].join(' ');
+          }}
+          filters={[
+            {
+              id: 'section',
+              label: 'Section',
+              value: sectionFilter,
+              onChange: setSectionFilter,
+              options: sectionOptions,
+            },
+            {
+              id: 'active',
+              label: 'Status',
+              value: activeFilter,
+              onChange: setActiveFilter,
+              options: [
+                { value: 'all', label: 'All' },
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' },
+              ],
+            },
+            {
+              id: 'type',
+              label: 'Type',
+              value: typeFilter,
+              onChange: setTypeFilter,
+              options: [
+                { value: 'all', label: 'All types' },
+                { value: 'group', label: 'Groups' },
+                { value: 'item', label: 'Items' },
+              ],
+            },
+          ]}
+          emptyMessage={
+            flatMenus.length === 0
+              ? 'No menu items yet.'
+              : 'No menus match your search or filters.'
+          }
           columns={[
+            {
+              key: 'sort_order',
+              header: 'Order',
+              className: 'w-16 tabular-nums',
+              sortable: true,
+              sortValue: (m) => m.sort_order,
+              render: (m) => m.sort_order,
+            },
             {
               key: 'key',
               header: 'Key',
+              sortable: true,
+              sortValue: (m) => m.menu_key,
               render: (m) => <code className="text-xs font-mono">{m.menu_key}</code>,
             },
             {
@@ -411,12 +534,55 @@ export default function MenuManagement() {
                 );
               },
             },
-            { key: 'label', header: 'Label', render: (m) => m.label },
-            { key: 'path', header: 'Path', render: (m) => m.path ?? '—' },
-            { key: 'section', header: 'Section', render: (m) => m.section },
+            {
+              key: 'label',
+              header: 'Label',
+              sortable: true,
+              sortValue: (m) => m.label,
+              render: (m) => (
+                <span className="font-medium text-iip-text">
+                  {m.label}
+                  {m.is_group && (
+                    <span className="ml-1.5 text-[10px] font-semibold uppercase text-iip-text-muted">
+                      Group
+                    </span>
+                  )}
+                </span>
+              ),
+            },
+            {
+              key: 'path',
+              header: 'Path',
+              sortable: true,
+              sortValue: (m) => m.path ?? '',
+              render: (m) => m.path ?? '—',
+            },
+            {
+              key: 'section',
+              header: 'Section',
+              sortable: true,
+              sortValue: (m) => m.section,
+              render: (m) => m.section,
+            },
+            {
+              key: 'parent',
+              header: 'Parent',
+              sortable: true,
+              sortValue: (m) => menuById.get(m.parent_id ?? '')?.label ?? '',
+              render: (m) => {
+                const parent = m.parent_id ? menuById.get(m.parent_id) : undefined;
+                return parent ? (
+                  <code className="text-xs font-mono text-iip-text-muted">{parent.menu_key}</code>
+                ) : (
+                  <span className="text-iip-text-muted">—</span>
+                );
+              },
+            },
             {
               key: 'priv',
               header: 'Privilege',
+              sortable: true,
+              sortValue: (m) => m.privilege_code ?? '',
               render: (m) =>
                 m.is_group ? (
                   <span className="text-xs text-iip-text-muted">—</span>
@@ -428,6 +594,8 @@ export default function MenuManagement() {
               key: 'active',
               header: 'Active',
               className: 'text-center',
+              sortable: true,
+              sortValue: (m) => m.is_active,
               render: (m) => (
                 <input
                   type="checkbox"
@@ -442,21 +610,29 @@ export default function MenuManagement() {
             },
             {
               key: 'actions',
-              header: '',
-              className: 'text-right w-[100px]',
+              header: 'Actions',
+              className: 'text-right w-[140px]',
               render: (m) => (
-                <button
-                  type="button"
-                  onClick={() => startEdit(m)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    editingMenuId === m.id
-                      ? 'bg-iip-primary/15 text-iip-primary'
-                      : 'text-iip-text-muted hover:bg-iip-surface-hover hover:text-iip-text'
-                  }`}
-                >
-                  <Pencil size={14} />
-                  Edit
-                </button>
+                <div className="inline-flex items-center justify-end gap-1.5">
+                  <AdminButton
+                    variant={editingMenuId === m.id ? 'active' : 'ghost'}
+                    size="xs"
+                    onClick={() => startEdit(m)}
+                  >
+                    <Pencil size={14} aria-hidden />
+                    Edit
+                  </AdminButton>
+                  <AdminButton
+                    variant="danger"
+                    size="xs"
+                    onClick={() => handleDelete(m)}
+                    disabled={deleteMutation.isPending}
+                    title="Delete menu item"
+                  >
+                    <Trash2 size={14} aria-hidden />
+                    Delete
+                  </AdminButton>
+                </div>
               ),
             },
           ]}

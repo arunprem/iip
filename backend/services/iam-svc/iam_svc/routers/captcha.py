@@ -4,6 +4,7 @@ import base64
 import random
 import string
 import uuid
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 
@@ -14,12 +15,14 @@ from pydantic import BaseModel
 from redis.asyncio import Redis
 
 from iam_svc.cache import get_redis
+from iam_svc.services.captcha_store import save_captcha
 
 router = APIRouter(tags=["Captcha"])
 
 CAPTCHA_WIDTH = 240
 CAPTCHA_HEIGHT = 56
-CAPTCHA_FONT_TARGET = 70
+CAPTCHA_FONT_SIZE = 44
+CAPTCHA_CHAR_COUNT = 6
 
 
 class CaptchaResponse(BaseModel):
@@ -27,98 +30,75 @@ class CaptchaResponse(BaseModel):
     image_base64: str
 
 
-def generate_random_string(length: int = 6) -> str:
+def generate_random_string(length: int = CAPTCHA_CHAR_COUNT) -> str:
     return "".join(random.choices(string.ascii_lowercase, k=length))
 
 
-def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    try:
-        import captcha as captcha_pkg
+@lru_cache(maxsize=1)
+def _captcha_font_path() -> Path:
+    """Resolve the bundled DroidSansMono font shipped with the captcha package."""
+    import captcha as captcha_pkg
 
-        font_path = Path(captcha_pkg.__file__).parent / "fonts" / "DroidSansMonoBold.ttf"
-        return ImageFont.truetype(str(font_path), size)
-    except OSError:
-        return ImageFont.load_default()
-
-
-def _char_rotated_size(
-    char: str,
-    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
-    angle: int,
-    layer_pad: int,
-) -> tuple[int, int]:
-    layer_size = layer_pad * 2
-    layer = Image.new("RGBA", (layer_size, layer_size), (0, 0, 0, 0))
-    ImageDraw.Draw(layer).text((layer_pad, layer_pad), char, font=font, anchor="mm")
-    rotated = layer.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True)
-    bbox = rotated.getbbox()
-    if not bbox:
-        return 0, 0
-    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+    package_root = Path(captcha_pkg.__file__).resolve().parent
+    candidates = (
+        package_root / "data" / "DroidSansMono.ttf",
+        package_root / "fonts" / "DroidSansMonoBold.ttf",
+        package_root / "fonts" / "DroidSansMono.ttf",
+    )
+    for path in candidates:
+        if path.is_file():
+            return path
+    raise FileNotFoundError(
+        "Captcha font not found. Expected DroidSansMono.ttf under the captcha package."
+    )
 
 
-def _resolve_font_size(text: str) -> int:
-    """Pick the largest font (up to CAPTCHA_FONT_TARGET) that fits the fixed canvas."""
-    slot_width = CAPTCHA_WIDTH / (len(text) + 1)
-    max_angle = 8
+def _load_font(size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(str(_captcha_font_path()), size)
 
-    for size in range(CAPTCHA_FONT_TARGET, 24, -2):
-        font = _load_font(size)
-        layer_pad = size // 2 + 8
-        fits = True
-        for char in text:
-            rot_w, rot_h = _char_rotated_size(char, font, max_angle, layer_pad)
-            if rot_h > CAPTCHA_HEIGHT - 2 or rot_w > slot_width:
-                fits = False
-                break
-        if fits:
-            return size
 
-    return 28
+def _text_bbox(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+) -> tuple[int, int, int, int]:
+    if hasattr(draw, "textbbox"):
+        return draw.textbbox((0, 0), text, font=font)
+    width, height = draw.textsize(text, font=font)  # type: ignore[attr-defined]
+    return (0, 0, width, height)
+
+
+def _draw_noise(draw: ImageDraw.ImageDraw) -> None:
+    for _ in range(4):
+        x1 = random.randint(0, CAPTCHA_WIDTH - 1)
+        y1 = random.randint(0, CAPTCHA_HEIGHT - 1)
+        x2 = random.randint(0, CAPTCHA_WIDTH - 1)
+        y2 = random.randint(0, CAPTCHA_HEIGHT - 1)
+        draw.line((x1, y1, x2, y2), fill="#cbd5e1", width=1)
 
 
 def render_elegant_captcha(text: str) -> bytes:
-    """Render captcha at fixed 240x56 with the largest readable font that fits."""
-    image = Image.new("RGB", (CAPTCHA_WIDTH, CAPTCHA_HEIGHT), "#f8fafc")
+    """Render captcha at fixed 240×56 — large centered text, high contrast."""
+    image = Image.new("RGB", (CAPTCHA_WIDTH, CAPTCHA_HEIGHT), "#ffffff")
     draw = ImageDraw.Draw(image)
+    _draw_noise(draw)
 
-    draw.rectangle(
-        [0, 0, CAPTCHA_WIDTH - 1, CAPTCHA_HEIGHT - 1],
-        outline="#e2e8f0",
-        width=1,
-    )
+    font = _load_font(CAPTCHA_FONT_SIZE)
+    fill = random.choice(("#7f1d1d", "#991b1b", "#b91c1c", "#dc2626"))
 
-    font_size = _resolve_font_size(text)
-    font = _load_font(font_size)
-    reds = ("#b91c1c", "#dc2626", "#ef4444", "#991b1b")
-    slot_width = CAPTCHA_WIDTH / (len(text) + 1)
-    layer_size = font_size + 16
-
-    for index, char in enumerate(text):
-        char_layer = Image.new("RGBA", (layer_size, layer_size), (0, 0, 0, 0))
-        char_draw = ImageDraw.Draw(char_layer)
-        char_draw.text(
-            (layer_size // 2, layer_size // 2),
-            char,
-            font=font,
-            fill=random.choice(reds),
-            anchor="mm",
-        )
-        angle = random.randint(-8, 8)
-        char_layer = char_layer.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True)
-
-        center_x = int(slot_width * (index + 1))
-        paste_x = center_x - char_layer.width // 2
-        paste_y = (CAPTCHA_HEIGHT - char_layer.height) // 2
-        image.paste(char_layer, (paste_x, paste_y), char_layer)
+    left, top, right, bottom = _text_bbox(draw, text, font)
+    text_w = right - left
+    text_h = bottom - top
+    x = (CAPTCHA_WIDTH - text_w) // 2 - left
+    y = (CAPTCHA_HEIGHT - text_h) // 2 - top
+    draw.text((x, y), text, font=font, fill=fill)
 
     buffer = BytesIO()
     image.save(buffer, format="PNG", optimize=True)
     return buffer.getvalue()
 
 
-@router.get("/", response_model=CaptchaResponse)
-async def generate_captcha(redis: Redis = Depends(get_redis)):
+async def _generate_captcha_response(redis: Redis | None) -> CaptchaResponse:
     captcha_text = generate_random_string()
 
     try:
@@ -127,7 +107,8 @@ async def generate_captcha(redis: Redis = Depends(get_redis)):
         fallback = ImageCaptcha(
             width=CAPTCHA_WIDTH,
             height=CAPTCHA_HEIGHT,
-            font_sizes=(40, 46, 52),
+            fonts=[str(_captcha_font_path())],
+            font_sizes=(CAPTCHA_FONT_SIZE,),
         )
         png_bytes = fallback.generate(captcha_text).getvalue()
 
@@ -135,11 +116,15 @@ async def generate_captcha(redis: Redis = Depends(get_redis)):
     data_uri = f"data:image/png;base64,{base64_img}"
 
     captcha_id = str(uuid.uuid4())
-    cache_key = f"captcha:{captcha_id}"
-
-    await redis.setex(cache_key, 180, captcha_text)
+    await save_captcha(redis, captcha_id, captcha_text)
 
     return CaptchaResponse(
         captcha_id=captcha_id,
         image_base64=data_uri,
     )
+
+
+@router.get("", response_model=CaptchaResponse)
+@router.get("/", response_model=CaptchaResponse, include_in_schema=False)
+async def generate_captcha(redis: Redis = Depends(get_redis)) -> CaptchaResponse:
+    return await _generate_captcha_response(redis)

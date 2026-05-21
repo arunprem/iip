@@ -7,6 +7,8 @@ interface AdminPageLayoutProps {
   icon: LucideIcon;
   actions?: ReactNode;
   children: ReactNode;
+  /** Fill main content height (e.g. office tree + form panels). */
+  fillHeight?: boolean;
 }
 
 export function AdminPageLayout({
@@ -15,9 +17,16 @@ export function AdminPageLayout({
   icon: Icon,
   actions,
   children,
+  fillHeight = false,
 }: AdminPageLayoutProps) {
   return (
-    <div className="space-y-6">
+    <div
+      className={
+        fillHeight
+          ? 'flex flex-col flex-1 min-h-0 gap-3 h-full'
+          : 'space-y-6'
+      }
+    >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-4">
           <div className="p-3 rounded-xl bg-iip-primary/10 text-iip-primary shrink-0">
