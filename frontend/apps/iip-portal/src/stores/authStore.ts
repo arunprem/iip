@@ -34,12 +34,10 @@ interface AuthState {
   currentOfficeId: string | null;
   actionGrants: ActionGrant[];
   isLoading: boolean;
-  hasHydrated: boolean;
 
   setTokens: (accessToken: string, refreshToken: string) => void;
   setUser: (user: User) => void;
   setCurrentOfficeId: (officeId: string) => void;
-  setHasHydrated: (value: boolean) => void;
   login: (username: string, password: string, captchaId: string, captchaCode: string) => Promise<void>;
   logout: () => void;
   fetchMe: () => Promise<void>;
@@ -57,25 +55,23 @@ export const useAuthStore = create<AuthState>()(
       currentOfficeId: null,
       actionGrants: [],
       isLoading: false,
-      hasHydrated: false,
 
       setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
 
       setUser: (user) => {
+        const offices = Array.isArray(user.offices) ? user.offices : [];
         const officeId =
           get().currentOfficeId ??
           user.default_office_id ??
-          user.offices[0]?.office_id ??
+          offices[0]?.office_id ??
           null;
-        set({ user, currentOfficeId: officeId });
+        set({ user: { ...user, offices }, currentOfficeId: officeId });
       },
 
       setCurrentOfficeId: (officeId) => {
         set({ currentOfficeId: officeId });
         void get().fetchPermissions();
       },
-
-      setHasHydrated: (value) => set({ hasHydrated: value }),
 
       login: async (username, password, captchaId, captchaCode) => {
         set({ isLoading: true });
@@ -122,10 +118,14 @@ export const useAuthStore = create<AuthState>()(
       fetchPermissions: async () => {
         const officeId = get().currentOfficeId;
         if (!officeId) return;
-        const res = await apiClient.get<{ actions: ActionGrant[] }>('/iam/access/permissions', {
-          skipToast: true,
-        });
-        set({ actionGrants: res.data.actions });
+        try {
+          const res = await apiClient.get<{ actions?: ActionGrant[] }>('/iam/access/permissions', {
+            skipToast: true,
+          });
+          set({ actionGrants: res.data.actions ?? [] });
+        } catch {
+          set({ actionGrants: [] });
+        }
       },
 
       initializeSession: async () => {
@@ -158,8 +158,15 @@ export const useAuthStore = create<AuthState>()(
         refreshToken: state.refreshToken,
         currentOfficeId: state.currentOfficeId,
       }),
-      onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true);
+      onRehydrateStorage: () => (_state, err) => {
+        if (err) {
+          console.error('[auth] failed to restore session from storage', err);
+          try {
+            localStorage.removeItem('iip-auth-storage');
+          } catch {
+            /* ignore */
+          }
+        }
       },
     }
   )

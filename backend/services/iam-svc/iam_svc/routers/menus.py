@@ -122,21 +122,37 @@ async def update_menu(
     repo = MenuRepository(db)
     menu = await repo.get_by_id_or_error(menu_id)
     data = payload.model_dump(exclude_unset=True)
+
+    if "is_group" in data:
+        menu.is_group = data["is_group"]
+        if menu.is_group:
+            menu.privilege_id = None
+        del data["is_group"]
+
     if "parent_id" in data:
         menu.parent_id = uuid.UUID(data["parent_id"]) if data["parent_id"] else None
         del data["parent_id"]
-    if "privilege_id" in data:
+
+    if "privilege_id" in data and not menu.is_group:
         raw_priv = data["privilege_id"]
         if raw_priv:
             priv_repo = PrivilegeRepository(db)
             menu.privilege_id = await _resolve_privilege_id(
-                priv_repo, raw_priv, None, is_group=menu.is_group
+                priv_repo, raw_priv, None, is_group=False
             )
         else:
             menu.privilege_id = None
         del data["privilege_id"]
+
     for key, value in data.items():
         setattr(menu, key, value)
+
+    if not menu.is_group and menu.privilege_id is None:
+        raise IIPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="Select a MENU privilege for this menu item (group headers may omit a privilege).",
+        )
     updated = await repo.update(menu)
     return _to_response(updated)
 

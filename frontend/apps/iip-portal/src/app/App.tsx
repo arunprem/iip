@@ -9,7 +9,9 @@ import type { UserContext } from '../components/AppShell'
 import { useThemeStore } from '../stores/themeStore'
 import { SystemAdminRoute } from '../components/SystemAdminRoute'
 import { selectCurrentOfficeRole, useAuthStore } from '../stores/authStore'
+import { useAuthHydrated } from '../hooks/useAuthHydrated'
 import { ToastContainer } from '../components/ToastContainer'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 import Login from '../pages/Login'
 
 // ─── Lazy-loaded page views (one per Stitch screen design) ───────────────────
@@ -36,13 +38,13 @@ const queryClient = new QueryClient({
 
 // ─── Protected Route Wrapper ──────────────────────────────────────────────────
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const hasHydrated = useAuthStore((state) => state.hasHydrated)
+  const authHydrated = useAuthHydrated()
   const accessToken = useAuthStore((state) => state.accessToken)
   const location = useLocation()
 
-  if (!hasHydrated) {
+  if (!authHydrated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-iip-bg text-iip-text-muted text-sm">
+      <div className="min-h-screen flex items-center justify-center bg-iip-bg text-iip-text text-sm">
         Loading session...
       </div>
     )
@@ -162,9 +164,10 @@ export function App() {
   }, [theme, setTheme])
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ToastContainer />
-      <BrowserRouter>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ToastContainer />
+        <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
@@ -176,7 +179,8 @@ export function App() {
             }
           />
         </Routes>
-      </BrowserRouter>
-    </QueryClientProvider>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }
