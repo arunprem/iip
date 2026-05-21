@@ -131,25 +131,18 @@ services:
       retries: 5
 
   # ─── OPA (Policy Engine) ─────────────────────────────────────────────────────
+  # Built locally for native arm64 on Apple Silicon (avoids amd64 emulation warning).
   opa:
-    image: openpolicyagent/opa:0.63.0
+    build:
+      context: ./infra/opa
+      dockerfile: Dockerfile
+    image: iip-opa:0.63.0
     container_name: iip-opa
     restart: unless-stopped
-    command:
-      - "run"
-      - "--server"
-      - "--addr=0.0.0.0:8181"
-      - "--log-format=json"
-      - "/policies"
     ports:
       - "8181:8181"
     volumes:
       - ./infra/opa/policies:/policies
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8181/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   # ─── MinIO (Object storage for evidence, media artifacts) ───────────────────
   minio:

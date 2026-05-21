@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from iip_core.settings import BaseServiceSettings, ClassificationLevel
@@ -115,10 +116,10 @@ async def get_db_context() -> AsyncGenerator[AsyncSession, None]:
 class Base(DeclarativeBase):
     """Declarative base with auto-managed UUID primary key and audit timestamps."""
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4()),
+        default=uuid.uuid4,
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(

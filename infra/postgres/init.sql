@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS iam.roles (
     role_name     VARCHAR(100) UNIQUE NOT NULL,
     description   TEXT NOT NULL,
     requires_jit  BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS iam.user_roles (
@@ -57,6 +58,25 @@ CREATE TABLE IF NOT EXISTS iam.user_roles (
     granted_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     expires_at    TIMESTAMPTZ,
     PRIMARY KEY (user_id, role_id)
+);
+
+CREATE TABLE IF NOT EXISTS iam.privileges (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    privilege_code  VARCHAR(100) UNIQUE NOT NULL,
+    name            VARCHAR(255),
+    description     TEXT NOT NULL,
+    module          VARCHAR(100) NOT NULL,
+    privilege_type  VARCHAR(20) NOT NULL DEFAULT 'DATA'
+                    CHECK (privilege_type IN ('MENU', 'DATA')),
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS iam.role_privileges (
+    role_id         UUID NOT NULL REFERENCES iam.roles(id) ON DELETE CASCADE,
+    privilege_id    UUID NOT NULL REFERENCES iam.privileges(id) ON DELETE CASCADE,
+    PRIMARY KEY (role_id, privilege_id)
 );
 
 CREATE TABLE IF NOT EXISTS iam.jit_sessions (
@@ -123,6 +143,34 @@ VALUES (
     'System Administrator',
     'SYS-0001',
     'Information Technology Wing',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TgxwjpZ6dU.UuFqRFLQFGGHy1O0a',
+    '$2b$12$ACwIjdUPXamqdWVx8dLuB.wpiq/K3wdN6fEApRSayNp6R4sSfrBui',
     'CONFIDENTIAL'
 ) ON CONFLICT (username) DO NOTHING;
+
+-- ─── Seed: System privileges ─────────────────────────────────────────────────
+
+INSERT INTO iam.privileges (privilege_code, description, module)
+VALUES
+    ('system:roles',       'Manage role definitions',              'System'),
+    ('system:privileges',  'Manage privilege assignments',         'System'),
+    ('system:menus',       'Manage navigation menus',              'System'),
+    ('iam:users',          'Manage IAM users',                     'IAM'),
+    ('iam:roles',          'Assign roles to users',                'IAM')
+ON CONFLICT (privilege_code) DO NOTHING;
+
+INSERT INTO iam.role_privileges (role_id, privilege_id)
+SELECT r.id, p.id
+FROM iam.roles r
+CROSS JOIN iam.privileges p
+WHERE r.role_name IN ('SYSTEM_ADMIN', 'IT_ADMIN')
+  AND p.privilege_code IN ('system:roles', 'system:privileges', 'system:menus', 'iam:users', 'iam:roles')
+ON CONFLICT DO NOTHING;
+
+-- ─── Seed: Assign SYSTEM_ADMIN to admin user ─────────────────────────────────
+
+INSERT INTO iam.user_roles (user_id, role_id, justification)
+SELECT u.id, r.id, 'Bootstrap system administrator'
+FROM iam.users u
+JOIN iam.roles r ON r.role_name = 'SYSTEM_ADMIN'
+WHERE u.username = 'admin'
+ON CONFLICT DO NOTHING;

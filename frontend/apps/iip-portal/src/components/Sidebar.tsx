@@ -1,155 +1,145 @@
-import React from 'react'
-import { NavLink } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  Radio,
-  FolderOpen,
-  Bot,
-  Users,
-  MapPin,
-  Network,
-  UserCheck,
-  Shield,
-  FileText,
-} from 'lucide-react'
-import type { UserContext } from './AppShell'
+import { useEffect, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { ChevronDown } from 'lucide-react';
+import type { UserContext } from './AppShell';
+import { IipLogo } from './IipLogo';
+import { useNavMenus, type NavMenuItem } from '../hooks/useNavMenus';
+import { resolveIcon } from '../utils/iconMap';
 
-// ─── Navigation items mapped to Stitch screen designs ─────────────────────────
+const linkClass = ({ isActive }: { isActive: boolean }) =>
+  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+    isActive
+      ? 'bg-iip-primary/10 text-iip-primary'
+      : 'text-iip-text-muted hover:bg-iip-surface-hover hover:text-iip-text'
+  }`;
 
-const NAV_ITEMS = [
-  {
-    to: '/dashboard',
-    label: "Director's Dashboard",
-    icon: LayoutDashboard,
-    roles: ['SYSTEM_ADMIN', 'SUPERVISOR'],
-    screenId: '0acc42fcdd97405cb28ce478d728b535',
-  },
-  {
-    to: '/watch-console',
-    label: 'Watch Officer Console',
-    icon: Radio,
-    roles: ['WATCH_OFFICER', 'SUPERVISOR', 'SYSTEM_ADMIN'],
-    screenId: '93bea73a90f74bb0b2f735f34c489f0a',
-  },
-  {
-    to: '/cases',
-    label: 'Intelligence Cases',
-    icon: FolderOpen,
-    roles: ['ANALYST', 'SUPERVISOR', 'SYSTEM_ADMIN'],
-    screenId: '8f76fdad4eca43d3a59506f3ca0dbabf',
-  },
-  {
-    to: '/analyst-workbench',
-    label: 'LLM Analyst Workbench',
-    icon: Bot,
-    roles: ['ANALYST', 'SUPERVISOR'],
-    screenId: 'b12fdfdaa79448e59160663193b94909',
-  },
-  {
-    to: '/hotspot-console',
-    label: 'Hotspot & Risk Console',
-    icon: MapPin,
-    roles: ['ANALYST', 'SUPERVISOR', 'WATCH_OFFICER'],
-    screenId: 'b163ccf115b44688bc59effa77e584b1',
-  },
-  {
-    to: '/kg-canvas',
-    label: 'Knowledge Graph',
-    icon: Network,
-    roles: ['ANALYST', 'SUPERVISOR'],
-    screenId: '118728a1a25f4b859c06f5e1caeac95e',
-  },
-  {
-    to: '/humint-vault',
-    label: 'Source (HUMINT) Vault',
-    icon: UserCheck,
-    roles: ['ANALYST', 'SUPERVISOR'],
-    screenId: '1487fc76e70b4842b3ba9e7dd9d8add1',
-  },
-  {
-    to: '/iam-admin',
-    label: 'IAM Admin Console',
-    icon: Shield,
-    roles: ['SYSTEM_ADMIN', 'IT_ADMIN'],
-    screenId: 'c4cde9f717344ebca98a23bbc489b10b',
-  },
-]
+const subLinkClass = ({ isActive }: { isActive: boolean }) =>
+  `flex items-center gap-3 pl-10 pr-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+    isActive
+      ? 'bg-iip-primary/10 text-iip-primary'
+      : 'text-iip-text-muted hover:bg-iip-surface-hover hover:text-iip-text'
+  }`;
 
-// ─── Sidebar Component ────────────────────────────────────────────────────────
+function NavGroup({ item }: { item: NavMenuItem }) {
+  const location = useLocation();
+  const childPaths = item.children.filter((c) => c.path).map((c) => c.path!);
+  const isChildActive = childPaths.some(
+    (path) => location.pathname === path || location.pathname.startsWith(`${path}/`)
+  );
+  const [open, setOpen] = useState(isChildActive);
+  const Icon = resolveIcon(item.icon);
 
-interface SidebarProps {
-  user: UserContext
-}
+  useEffect(() => {
+    if (isChildActive) setOpen(true);
+  }, [isChildActive]);
 
-export function Sidebar({ user }: SidebarProps) {
-  const visibleItems = NAV_ITEMS.filter((item) =>
-    item.roles.some((r) => user.role === r || user.role === 'SYSTEM_ADMIN'),
-  )
+  if (!item.children.length) return null;
 
   return (
-    <nav
-      className="sidebar"
-      style={{ paddingTop: 'var(--space-4)', paddingBottom: 'var(--space-4)' }}
+    <li>
+      <button
+        type="button"
+        onClick={() => setOpen((p) => !p)}
+        className={`flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+          isChildActive
+            ? 'bg-iip-primary/10 text-iip-primary'
+            : 'text-iip-text-muted hover:bg-iip-surface-hover hover:text-iip-text'
+        }`}
+        aria-expanded={open}
+      >
+        <Icon size={18} className="shrink-0" />
+        <span className="flex-1 text-left">{item.label}</span>
+        <ChevronDown
+          size={16}
+          className={`shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      <ul
+        className="mt-0.5 space-y-0.5 overflow-hidden transition-all duration-200"
+        style={{ maxHeight: open ? item.children.length * 44 + 8 : 0, opacity: open ? 1 : 0 }}
+      >
+        {item.children.map((child) => {
+          const ChildIcon = resolveIcon(child.icon);
+          return (
+            <li key={child.id}>
+              {child.path ? (
+                <NavLink to={child.path} className={subLinkClass}>
+                  <ChildIcon size={16} className="shrink-0 opacity-80" />
+                  <span>{child.label}</span>
+                </NavLink>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </li>
+  );
+}
+
+function NavSection({ title, items }: { title: string; items: NavMenuItem[] }) {
+  if (!items.length) return null;
+  return (
+    <div className="mb-6">
+      <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-iip-text-muted">
+        {title}
+      </p>
+      <ul className="space-y-0.5">
+        {items.map((item) =>
+          item.is_group ? (
+            <NavGroup key={item.id} item={item} />
+          ) : item.path ? (
+            <li key={item.id}>
+              <NavLink to={item.path} end={item.path === '/dashboard'} className={linkClass}>
+                {(() => {
+                  const Icon = resolveIcon(item.icon);
+                  return <Icon size={18} className="shrink-0" />;
+                })()}
+                <span>{item.label}</span>
+              </NavLink>
+            </li>
+          ) : null
+        )}
+      </ul>
+    </div>
+  );
+}
+
+interface SidebarProps {
+  user: UserContext;
+  className?: string;
+}
+
+export function Sidebar({ user, className = '' }: SidebarProps) {
+  const { data: menus, isLoading } = useNavMenus();
+
+  const bySection = (menus ?? []).reduce<Record<string, NavMenuItem[]>>((acc, item) => {
+    const section = item.section || 'Menu';
+    if (!acc[section]) acc[section] = [];
+    acc[section].push(item);
+    return acc;
+  }, {});
+
+  return (
+    <aside
+      className={`w-[290px] shrink-0 self-stretch bg-iip-surface border-r border-iip-border flex flex-col min-h-0 ${className}`}
       aria-label="Primary navigation"
     >
-      {/* Logo / Service Identity */}
-      <div
-        style={{
-          padding: 'var(--space-4) var(--space-6)',
-          borderBottom: '1px solid var(--color-outline-variant)',
-          marginBottom: 'var(--space-4)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <Shield size={20} color="var(--color-primary)" />
-          <div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-on-surface)' }}>
-              IIP
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--color-outline)', fontFamily: 'var(--font-mono)' }}>
-              INTELLIGENCE WING
-            </div>
-          </div>
+      <div className="h-16 flex items-center gap-3 px-6 border-b border-iip-border shrink-0">
+        <IipLogo size="sm" whiteBackground />
+        <div>
+          <p className="text-base font-bold text-iip-text leading-tight">IIP</p>
+          <p className="text-[11px] text-iip-text-muted">Kerala Police</p>
         </div>
       </div>
 
-      {/* Nav links */}
-      <div style={{ flex: 1, padding: '0 var(--space-2)' }}>
-        {visibleItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            title={`Stitch screen: ${item.screenId}`}
-          >
-            <item.icon size={16} />
-            <span>{item.label}</span>
-          </NavLink>
+      <nav className="flex-1 overflow-y-auto px-4 py-6">
+        {isLoading && (
+          <p className="text-sm text-iip-text-muted px-3">Loading navigation...</p>
+        )}
+        {Object.entries(bySection).map(([section, items]) => (
+          <NavSection key={section} title={section} items={items} />
         ))}
-      </div>
-
-      {/* User panel at bottom */}
-      <div
-        style={{
-          borderTop: '1px solid var(--color-outline-variant)',
-          padding: 'var(--space-3) var(--space-4)',
-          marginTop: 'var(--space-4)',
-        }}
-      >
-        <div style={{ fontSize: '13px', color: 'var(--color-on-surface)', fontWeight: 600 }}>
-          {user.name}
-        </div>
-        <div
-          style={{
-            fontSize: '12px',
-            color: 'var(--color-outline)',
-            fontFamily: 'var(--font-mono)',
-            marginTop: '2px',
-          }}
-        >
-          {user.clearanceLevel}
-        </div>
-      </div>
-    </nav>
-  )
+      </nav>
+    </aside>
+  );
 }

@@ -35,6 +35,10 @@ from .routers import health as health_router
 from .routers import users as users_router
 from .routers import roles as roles_router
 from .routers import jit as jit_router
+from .routers import captcha as captcha_router
+from .routers import menus as menus_router
+from .routers import privileges as privileges_router
+from .routers import access as access_router
 
 settings = BaseServiceSettings(service_name="iam-svc")
 logger = get_logger(__name__)
@@ -134,7 +138,7 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins if hasattr(settings, "cors_origins") else ["http://localhost:3000"],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Classification-Level"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Classification-Level", "X-Office-Id"],
     )
 
     # ── Exception Handlers ────────────────────────────────────────────────────
@@ -150,6 +154,10 @@ def create_app() -> FastAPI:
     app.include_router(users_router.router, prefix="/api/v1/iam/users", tags=["users"])
     app.include_router(roles_router.router, prefix="/api/v1/iam/roles", tags=["roles"])
     app.include_router(jit_router.router, prefix="/api/v1/iam/jit", tags=["jit-elevation"])
+    app.include_router(captcha_router.router, prefix="/api/v1/captcha", tags=["captcha"])
+    app.include_router(menus_router.router, prefix="/api/v1/iam/menus", tags=["menus"])
+    app.include_router(privileges_router.router, prefix="/api/v1/iam/privileges", tags=["privileges"])
+    app.include_router(access_router.router, prefix="/api/v1/iam/access", tags=["access"])
 
     # ── OpenTelemetry Instrumentation ─────────────────────────────────────────
     FastAPIInstrumentor.instrument_app(app)

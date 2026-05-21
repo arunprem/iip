@@ -1,403 +1,185 @@
-/* ============================================================================
-   IIP Global Design Token System
-   Aligned with Stitch Project: Integrated Intelligence Platform (10053774228321190932)
-   Design Theme: Corporate Modern with Technical Edge | Dark Mode First
-   ============================================================================ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@layer base {
+  :root {
+    /* LIGHT THEME (Default) */
+    color-scheme: light;
+    --color-iip-bg: 248 250 252; /* Slate 50 */
+    --color-iip-surface: 255 255 255; /* White */
+    --color-iip-surface-hover: 241 245 249; /* Slate 100 */
+    --color-iip-surface-active: 226 232 240; /* Slate 200 */
 
-/* ─── Design Tokens ────────────────────────────────────────────────────────── */
-:root {
-  /* Fonts */
-  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+    --color-iip-primary: 70 95 255; /* TailAdmin brand blue #465FFF */
+    --color-iip-primary-hover: 55 79 224;
+    
+    --color-iip-text: 15 23 42; /* Slate 900 */
+    --color-iip-text-muted: 100 116 139; /* Slate 500 */
 
-  /* ── Surface Tonal Layers (Elevation via lightness) ── */
-  --color-bg:                 #111316;  /* Level 0 — deepest background */
-  --color-surface-dim:        #111316;
-  --color-surface:            #111316;
-  --color-surface-low:        #1a1c1f;  /* Level 1 — panels / sidebar */
-  --color-surface-container:  #1e2023;  /* Level 1.5 — cards */
-  --color-surface-high:       #282a2d;  /* Level 2 — elevated modals */
-  --color-surface-highest:    #333538;  /* Level 3 — tooltips / popovers */
-  --color-surface-bright:     #37393d;
+    --color-iip-border: 226 232 240; /* Slate 200 */
+    --color-iip-border-hover: 203 213 225; /* Slate 300 */
+    
+    --color-class-unclassified: 71 85 105;
+    --color-class-restricted: 2 132 199;
+    --color-class-confidential: 217 119 6;
+    --color-class-secret: 220 38 38;
+    --color-class-top-secret: 147 51 234;
+  }
 
-  /* ── Text ── */
-  --color-on-surface:         #e2e2e6;
-  --color-on-surface-variant: #c1c6d7;
-  --color-outline:            #8b90a0;
-  --color-outline-variant:    #414755;
+  :root.dark {
+    /* DARK THEME */
+    color-scheme: dark;
+    --color-iip-bg: 9 9 11; /* Zinc 950 */
+    --color-iip-surface: 24 24 27; /* Zinc 900 */
+    --color-iip-surface-hover: 39 39 42; /* Zinc 800 */
+    --color-iip-surface-active: 63 63 70; /* Zinc 700 */
 
-  /* ── Primary (Intel Blue) ── */
-  --color-primary:            #adc6ff;
-  --color-primary-container:  #4b8eff;
-  --color-on-primary:         #002e69;
-  --color-primary-dim:        #adc6ff;
+    --color-iip-primary: 56 189 248; /* Sky 400 */
+    --color-iip-primary-hover: 2 132 199; /* Sky 600 */
+    
+    --color-iip-text: 244 244 245; /* Zinc 100 */
+    --color-iip-text-muted: 161 161 170; /* Zinc 400 */
 
-  /* ── Secondary (Cyber Teal) ── */
-  --color-secondary:          #43ecdb;
-  --color-secondary-container:#00cfbf;
-  --color-on-secondary:       #003732;
+    --color-iip-border: 39 39 42; /* Zinc 800 */
+    --color-iip-border-hover: 63 63 70; /* Zinc 700 */
+  }
+  
+  body {
+    @apply bg-iip-bg text-iip-text font-sans antialiased transition-colors duration-300;
+  }
 
-  /* ── Tertiary (Operational Amber) ── */
-  --color-tertiary:           #ffb595;
-  --color-tertiary-container: #ef6719;
-  --color-on-tertiary:        #571e00;
+  ::selection {
+    background-color: rgb(var(--color-iip-primary) / 0.3);
+  }
 
-  /* ── Status ── */
-  --color-error:              #ffb4ab;
-  --color-error-container:    #93000a;
-  --color-success:            #4ade80;
-  --color-warning:            #fbbf24;
-
-  /* ── Classification Colors (NON-NEGOTIABLE) ── */
-  --color-class-unclassified:  #475569;
-  --color-class-restricted:    #005bc1;
-  --color-class-confidential:  #d97706;
-  --color-class-secret:        #dc2626;
-  --color-class-top-secret:    #9333ea;
-
-  /* ── Spacing (8pt Grid) ── */
-  --space-1:   4px;
-  --space-2:   8px;
-  --space-3:   12px;
-  --space-4:   16px;
-  --space-5:   20px;
-  --space-6:   24px;
-  --space-8:   32px;
-  --space-10:  40px;
-  --space-12:  48px;
-  --space-16:  64px;
-
-  /* ── Border Radii ── */
-  --radius-sm:  4px;
-  --radius-md:  6px;
-  --radius-lg:  8px;
-  --radius-xl:  12px;
-  --radius-full: 9999px;
-
-  /* ── Shadows (tonal, not harsh) ── */
-  --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg:   0 8px 32px rgba(0, 0, 0, 0.6);
-
-  /* ── Transitions ── */
-  --transition-hover:   150ms ease-in-out;
-  --transition-expand:  200ms ease-in-out;
-  --transition-modal:   250ms cubic-bezier(0.16, 1, 0.3, 1);
-
-  /* ── Layout ── */
-  --sidebar-width:       280px;
-  --header-height:       64px;
-  --class-banner-height: 24px;
-  --status-strip-height: 40px;
-  --topbar-total:        calc(var(--class-banner-height) + var(--status-strip-height) + var(--header-height));
+  /* Custom Scrollbar for Industrial Look */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-iip-bg;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-iip-surface-active rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-iip-text-muted;
+  }
 }
 
-/* ─── Global Resets ────────────────────────────────────────────────────────── */
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+@layer components {
+  /* Bootstrap-style form validation */
+  .form-control {
+    @apply w-full rounded-lg border text-sm transition-all shadow-sm;
+    @apply bg-iip-bg border-iip-border text-iip-text;
+    @apply px-3 py-2.5 min-h-[2.75rem];
+    @apply placeholder:text-iip-text-muted/70;
+    @apply focus:outline-none focus:ring-2 focus:ring-iip-primary/25 focus:border-iip-primary;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
 
-html {
-  font-size: 16px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+  select.form-control {
+    @apply pr-9 cursor-pointer;
+  }
 
-body {
-  font-family: var(--font-ui);
-  background-color: var(--color-bg);
-  color: var(--color-on-surface);
-  line-height: 1.5;
-  overflow-x: hidden;
-}
+  textarea.form-control {
+    @apply min-h-[5.5rem] py-2.5 resize-y leading-relaxed;
+  }
 
-/* ─── Typography Scale ─────────────────────────────────────────────────────── */
-.text-display-lg { font-size: 48px; font-weight: 700; line-height: 56px; letter-spacing: -0.02em; }
-.text-display-sm { font-size: 36px; font-weight: 700; line-height: 44px; letter-spacing: -0.02em; }
-.text-headline-lg { font-size: 30px; font-weight: 600; line-height: 38px; }
-.text-headline-sm { font-size: 24px; font-weight: 600; line-height: 32px; }
-.text-title-lg { font-size: 20px; font-weight: 600; line-height: 28px; }
-.text-title-sm { font-size: 18px; font-weight: 600; line-height: 26px; }
-.text-body-lg { font-size: 16px; font-weight: 400; line-height: 24px; }
-.text-body-sm { font-size: 14px; font-weight: 400; line-height: 20px; }
-.text-label-mono {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
-  letter-spacing: 0.02em;
-}
-.text-label-caps {
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 16px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
+  .admin-form-label {
+    @apply text-sm font-medium text-iip-text;
+  }
 
-/* ─── Classification Banner ─────────────────────────────────────────────────── */
-.classification-banner {
-  height: var(--class-banner-height);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #ffffff;
-  position: sticky;
-  z-index: 1000;
-}
-.classification-banner--unclassified  { background: var(--color-class-unclassified); }
-.classification-banner--restricted    { background: var(--color-class-restricted); }
-.classification-banner--confidential  { background: var(--color-class-confidential); }
-.classification-banner--secret        { background: var(--color-class-secret); }
-.classification-banner--top-secret    { background: var(--color-class-top-secret); }
+  .admin-form-hint {
+    @apply text-xs text-iip-text-muted leading-snug;
+  }
 
-/* ─── Status Strip ──────────────────────────────────────────────────────────── */
-.status-strip {
-  height: var(--status-strip-height);
-  background: var(--color-surface-low);
-  border-bottom: 1px solid var(--color-outline-variant);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--space-4);
-  gap: var(--space-4);
-}
+  .admin-form-panel {
+    @apply rounded-xl border border-iip-border bg-iip-bg/40 overflow-hidden;
+  }
 
-/* ─── Navigation Sidebar ────────────────────────────────────────────────────── */
-.sidebar {
-  width: var(--sidebar-width);
-  background: var(--color-surface-low);
-  border-right: 1px solid var(--color-outline-variant);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  flex-shrink: 0;
-}
+  .admin-form-panel-header {
+    @apply px-5 py-4 border-b border-iip-border bg-iip-surface;
+  }
 
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background var(--transition-hover);
-  color: var(--color-on-surface-variant);
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-  margin: 2px var(--space-2);
-}
+  .admin-form-panel-body {
+    @apply px-5 py-5;
+  }
 
-.nav-item:hover {
-  background: rgba(173, 198, 255, 0.08);
-  color: var(--color-on-surface);
-}
+  .admin-form-panel-footer {
+    @apply px-5 py-4 border-t border-iip-border bg-iip-surface/60 flex flex-wrap items-center justify-end gap-3;
+  }
 
-.nav-item.active {
-  background: rgba(173, 198, 255, 0.12);
-  color: var(--color-primary);
-  border-left: 3px solid var(--color-primary);
-}
+  .form-control.is-invalid {
+    @apply border-red-500 focus:border-red-500 focus:ring-red-500/25;
+  }
 
-/* ─── Cards ─────────────────────────────────────────────────────────────────── */
-.card {
-  background: var(--color-surface-container);
-  border: 1px solid var(--color-outline-variant);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4);
-  transition: border-color var(--transition-hover);
-}
+  .invalid-feedback {
+    @apply block mt-1.5 text-xs font-medium text-red-600;
+  }
 
-.card:hover {
-  border-color: var(--color-outline);
-}
+  :root.dark .invalid-feedback {
+    color: rgb(248 113 113); /* red-400 */
+  }
 
-/* ─── Buttons ────────────────────────────────────────────────────────────────── */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-ui);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-hover);
-  border: none;
-  outline: none;
-}
+  .alert-danger {
+    @apply flex items-start gap-3 p-4 rounded-xl text-sm;
+    @apply bg-red-500/15 border border-red-500/40 text-red-700;
+  }
 
-.btn-primary {
-  background: var(--color-primary-container);
-  color: #ffffff;
-}
-.btn-primary:hover {
-  background: #6ba3ff;
-  box-shadow: 0 0 0 2px rgba(75, 142, 255, 0.3);
-}
+  :root.dark .alert-danger {
+    @apply text-red-300 bg-red-500/20 border-red-500/50;
+  }
 
-.btn-secondary {
-  background: transparent;
-  color: var(--color-primary);
-  border: 1px solid var(--color-primary-container);
-}
-.btn-secondary:hover {
-  background: rgba(75, 142, 255, 0.1);
-}
+  .dashboard-card {
+    @apply bg-iip-surface rounded-2xl border border-iip-border shadow-sm;
+  }
 
-.btn-ghost {
-  background: transparent;
-  color: var(--color-on-surface-variant);
-  border: 1px solid var(--color-outline-variant);
-}
-.btn-ghost:hover {
-  background: var(--color-surface-high);
-  color: var(--color-on-surface);
-}
+  /* Classification banners — aligned with IIP / TailAdmin theme */
+  .classification-banner {
+    background-color: rgb(var(--color-iip-primary) / 0.08);
+    border-color: rgb(var(--color-iip-primary) / 0.2);
+    color: rgb(var(--color-iip-primary) / 1);
+  }
 
-.btn-danger {
-  background: var(--color-error-container);
-  color: var(--color-error);
-  border: 1px solid var(--color-error-container);
-}
-.btn-danger:hover {
-  background: #b00009;
-}
+  .classification-banner-dot {
+    @apply inline-block h-1.5 w-1.5 rounded-full shrink-0;
+    background-color: rgb(var(--color-iip-primary) / 1);
+  }
 
-/* ─── Input Fields ───────────────────────────────────────────────────────────── */
-.input-field {
-  background: var(--color-surface-container);
-  border: none;
-  border-bottom: 2px solid var(--color-outline-variant);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  padding: var(--space-3) var(--space-4);
-  color: var(--color-on-surface);
-  font-family: var(--font-ui);
-  font-size: 14px;
-  outline: none;
-  transition: border-color var(--transition-hover);
-  width: 100%;
+  :root.dark .classification-banner {
+    background-color: rgb(var(--color-iip-primary) / 0.15);
+    border-color: rgb(var(--color-iip-primary) / 0.3);
+  }
+
+  /* Toast enter / exit (top-right stack) */
+  .toast-motion {
+    transform-origin: top right;
+    will-change: transform, opacity;
+  }
+
+  .toast-motion-enter-from {
+    opacity: 0;
+    transform: translateX(1.5rem) scale(0.97);
+    pointer-events: none;
+  }
+
+  .toast-motion-visible {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    transition:
+      opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .toast-motion-exit-to {
+    opacity: 0;
+    transform: translateX(1.5rem) scale(0.97);
+    pointer-events: none;
+    transition:
+      opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
 }
-
-.input-field:focus {
-  border-bottom-color: var(--color-primary-container);
-  background: var(--color-surface-high);
-}
-
-.input-field::placeholder {
-  color: var(--color-outline);
-}
-
-/* ─── Data Table ─────────────────────────────────────────────────────────────── */
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.data-table th {
-  background: var(--color-surface-low);
-  color: var(--color-on-surface-variant);
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: var(--space-3) var(--space-4);
-  text-align: left;
-  border-bottom: 1px solid var(--color-outline-variant);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.data-table td {
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--color-outline-variant);
-  color: var(--color-on-surface);
-  vertical-align: middle;
-}
-
-.data-table tr:hover td {
-  background: rgba(173, 198, 255, 0.06);
-}
-
-/* ─── Badges / Classification Chips ──────────────────────────────────────────── */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.badge-unclassified  { background: rgba(71, 85, 105, 0.3);  color: #94a3b8; border: 1px solid #475569; }
-.badge-restricted    { background: rgba(0, 91, 193, 0.25);  color: #adc6ff; border: 1px solid #005bc1; }
-.badge-confidential  { background: rgba(217, 119, 6, 0.25); color: #ffb595; border: 1px solid #d97706; }
-.badge-secret        { background: rgba(220, 38, 38, 0.25); color: #ffb4ab; border: 1px solid #dc2626; }
-.badge-top-secret    { background: rgba(147, 51, 234, 0.25);color: #d8b4fe; border: 1px solid #9333ea; }
-
-/* ─── JIT Elevated Badge ─────────────────────────────────────────────────────── */
-.badge-jit {
-  background: rgba(251, 191, 36, 0.2);
-  color: #fbbf24;
-  border: 1px solid #fbbf24;
-  animation: pulse-jit 2s ease-in-out infinite;
-}
-
-@keyframes pulse-jit {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-/* ─── Status Dots ────────────────────────────────────────────────────────────── */
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.status-dot--online   { background: var(--color-success); box-shadow: 0 0 6px rgba(74, 222, 128, 0.6); }
-.status-dot--degraded { background: var(--color-warning); }
-.status-dot--offline  { background: var(--color-error); }
-
-/* ─── Modal Overlay ──────────────────────────────────────────────────────────── */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 500;
-}
-
-.modal {
-  background: var(--color-surface-high);
-  border: 1px solid var(--color-outline);
-  border-radius: var(--radius-xl);
-  padding: var(--space-8);
-  max-width: 560px;
-  width: 90%;
-  box-shadow: var(--shadow-lg);
-}
-
-/* ─── Scrollbar Styling ───────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--color-bg); }
-::-webkit-scrollbar-thumb { background: var(--color-outline-variant); border-radius: var(--radius-full); }
-::-webkit-scrollbar-thumb:hover { background: var(--color-outline); }

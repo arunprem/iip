@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Bot, Send, RefreshCcw, Zap } from 'lucide-react'
+import { useAuthStore } from '../stores/authStore'
 
 /**
  * LLM Analyst Workbench
@@ -44,96 +45,143 @@ export default function AnalystWorkbench() {
     setInput('')
     setIsStreaming(true)
 
-    // TODO: Replace with actual SSE stream from /api/v1/ml/chat/stream
-    setTimeout(() => {
+    try {
+      const { accessToken } = useAuthStore.getState()
+      const response = await fetch('/api/v1/ml/chat/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: input }],
+          mode: mode
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to connect to LLM gateway')
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let assistantContent = ''
+
       setMessages((m) => [
         ...m,
         {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: `[Llama 3.1 · Run:ai] Received query: "${userMsg.content}". Full RAG pipeline integration with Elasticsearch and Neo4j is pending deployment. This response is a placeholder.`,
+          content: '',
           timestamp: new Date(),
         },
       ])
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          
+          const chunk = decoder.decode(value)
+          const lines = chunk.split('\n')
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6)
+              if (data === '[DONE]') continue
+              
+              assistantContent += data
+              setMessages((m) => {
+                const newMessages = [...m]
+                newMessages[newMessages.length - 1].content = assistantContent
+                return newMessages
+              })
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(error)
+      setMessages((m) => [
+        ...m,
+        {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: 'ERROR: Failed to connect to local Llama 3.1 inference engine.',
+          timestamp: new Date(),
+        },
+      ])
+    } finally {
       setIsStreaming(false)
-    }, 1200)
+    }
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 'var(--space-4)' }}>
+    <div className="flex flex-col h-full bg-iip-bg/50 rounded-2xl border border-iip-border overflow-hidden shadow-2xl">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="flex justify-between items-center px-8 py-6 bg-iip-surface border-b border-iip-border">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-1)' }}>
-            <Bot size={22} color="var(--color-secondary)" />
-            <h1 className="text-headline-lg">LLM Analyst Workbench</h1>
+          <div className="flex items-center gap-4 mb-2">
+            <div className="p-2 bg-iip-primary/10 rounded-xl border border-iip-primary/20 shadow-inner">
+              <Bot size={24} className="text-iip-primary" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-iip-text drop-shadow-sm">
+              LLM Analyst Workbench
+            </h1>
           </div>
-          <p className="text-body-sm" style={{ color: 'var(--color-on-surface-variant)' }}>
-            Llama 3.1 · NVIDIA H200 · Run:ai ·{' '}
-            <span className="text-label-mono" style={{ color: 'var(--color-secondary)' }}>
+          <p className="text-sm text-iip-text-muted flex items-center gap-2">
+            Llama 3.1 · NVIDIA H200 · Run:ai ·
+            <span className="font-mono text-[11px] bg-iip-surface-active px-2 py-1 rounded text-iip-primary/90 border border-iip-border-hover">
               standalone-llm.runai-team-arun.keralapolice.gov.in
             </span>
           </p>
         </div>
 
         {/* Mode toggle */}
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <div className="flex gap-2 p-1 bg-iip-bg rounded-xl border border-iip-border shadow-inner">
           <button
-            className={`btn ${mode === 'analyst' ? 'btn-primary' : 'btn-ghost'}`}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+              mode === 'analyst' 
+                ? 'bg-iip-surface-active text-iip-text shadow-sm border border-iip-border-hover' 
+                : 'text-iip-text-muted hover:text-iip-text hover:bg-white/5 border border-transparent'
+            }`}
             onClick={() => setMode('analyst')}
           >
             Analyst
           </button>
           <button
-            className={`btn ${mode === 'report_draft' ? 'btn-primary' : 'btn-ghost'}`}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 ${
+              mode === 'report_draft' 
+                ? 'bg-iip-surface-active text-iip-text shadow-sm border border-iip-border-hover' 
+                : 'text-iip-text-muted hover:text-iip-text hover:bg-white/5 border border-transparent'
+            }`}
             onClick={() => setMode('report_draft')}
           >
-            <FileText size={14} />
+            <FileText size={14} className="opacity-70" />
             Report Draft
           </button>
         </div>
       </div>
 
       {/* Chat window */}
-      <div
-        className="card"
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--space-4)',
-          padding: 'var(--space-6)',
-        }}
-      >
+      <div className="flex-1 overflow-y-auto flex flex-col gap-6 p-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-iip-surface/40 via-iip-bg to-iip-bg">
         {messages.map((msg) => (
           <div
             key={msg.id}
-            style={{
-              display: 'flex',
-              justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-            }}
+            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              style={{
-                maxWidth: '75%',
-                background:
-                  msg.role === 'user'
-                    ? 'var(--color-primary-container)'
-                    : 'var(--color-surface-highest)',
-                color: msg.role === 'user' ? '#ffffff' : 'var(--color-on-surface)',
-                borderRadius: msg.role === 'user'
-                  ? 'var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg)'
-                  : 'var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-sm)',
-                padding: 'var(--space-3) var(--space-4)',
-                fontSize: '14px',
-                lineHeight: '22px',
-              }}
+              className={`max-w-[80%] p-5 text-[15px] leading-relaxed shadow-lg ${
+                msg.role === 'user'
+                  ? 'bg-iip-primary text-iip-bg rounded-2xl rounded-tr-sm border border-iip-primary-hover shadow-iip-primary/20'
+                  : 'bg-iip-surface text-iip-text rounded-2xl rounded-tl-sm border border-iip-border shadow-black/40 backdrop-blur-md'
+              }`}
             >
-              {msg.content}
+              <div className="whitespace-pre-wrap">{msg.content}</div>
               <div
-                className="text-label-mono"
-                style={{ color: 'rgba(255,255,255,0.5)', marginTop: 'var(--space-1)', fontSize: '11px' }}
+                className={`font-mono text-[11px] mt-3 uppercase tracking-wider ${
+                  msg.role === 'user' ? 'text-iip-bg/60' : 'text-iip-text-muted/60'
+                }`}
               >
                 {msg.timestamp.toLocaleTimeString()}
               </div>
@@ -142,28 +190,34 @@ export default function AnalystWorkbench() {
         ))}
 
         {isStreaming && (
-          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-            <Zap size={14} color="var(--color-secondary)" />
-            <span className="text-label-mono" style={{ color: 'var(--color-secondary)' }}>
-              Llama 3.1 generating...
+          <div className="flex items-center gap-3 p-4 bg-iip-surface-hover border border-iip-border rounded-xl self-start w-fit shadow-md">
+            <Zap size={16} className="text-iip-primary animate-pulse" />
+            <span className="font-mono text-[12px] text-iip-primary tracking-widest uppercase animate-pulse">
+              Generating Inference...
             </span>
           </div>
         )}
       </div>
 
       {/* Input */}
-      <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-        <input
-          className="input-field"
-          placeholder="Ask the analyst assistant... (RAG queries, case summaries, report drafts)"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-          disabled={isStreaming}
-        />
-        <button className="btn btn-primary" onClick={sendMessage} disabled={isStreaming}>
-          <Send size={16} />
-        </button>
+      <div className="p-6 bg-iip-surface border-t border-iip-border">
+        <div className="flex gap-3 max-w-5xl mx-auto">
+          <input
+            className="flex-1 bg-iip-bg border border-iip-border-hover focus:border-iip-primary text-iip-text text-sm rounded-xl px-5 py-4 outline-none transition-colors shadow-inner placeholder:text-iip-text-muted/50"
+            placeholder="Ask the analyst assistant... (RAG queries, case summaries, report drafts)"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+            disabled={isStreaming}
+          />
+          <button 
+            className="bg-iip-primary hover:bg-iip-primary-hover text-iip-bg disabled:opacity-50 disabled:cursor-not-allowed px-6 rounded-xl flex items-center justify-center transition-all shadow-[0_0_15px_rgba(56,189,248,0.2)] hover:shadow-[0_0_20px_rgba(56,189,248,0.4)]" 
+            onClick={sendMessage} 
+            disabled={isStreaming}
+          >
+            <Send size={20} className="ml-1" />
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -16,13 +16,13 @@ from typing import Annotated, Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from pydantic import BaseModel
 
 from iip_core.settings import BaseServiceSettings, ClassificationLevel, get_settings
 
 # ─── Password Hashing ─────────────────────────────────────────────────────────
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Handled directly via bcrypt
 
 # ─── HTTP Bearer extraction ────────────────────────────────────────────────────
 bearer_scheme = HTTPBearer(auto_error=True)
@@ -62,12 +62,15 @@ class CurrentUser(BaseModel):
 
 def hash_password(plain: str) -> str:
     """Return a bcrypt hash of the given password."""
-    return pwd_context.hash(plain)
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify a plain password against a stored bcrypt hash."""
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except ValueError:
+        return False
 
 
 def create_access_token(
@@ -146,6 +149,22 @@ def require_role(role: str):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Role '{role}' is required to access this resource.",
+            )
+        return user
+
+    return _checker
+
+
+def require_any_role(*roles: str):
+    """FastAPI dependency factory: assert the user holds at least one of the given roles."""
+
+    allowed = set(roles)
+
+    def _checker(user: Annotated[CurrentUser, Depends(get_current_user)]) -> CurrentUser:
+        if not allowed.intersection(user.roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"One of roles {sorted(allowed)} is required to access this resource.",
             )
         return user
 

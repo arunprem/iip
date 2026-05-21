@@ -31,7 +31,7 @@ class LLMSettings(BaseSettings):
 
     base_url: str = "http://standalone-llm.runai-team-arun.keralapolice.gov.in/v1"
     api_key: str = "RUNAI_LOCAL_NO_KEY_REQUIRED"
-    model_name: str = "meta-llama/Llama-3.1-70B-Instruct"
+    model_name: str = "llama-3.1-8b"
     max_tokens: int = 4096
     temperature: float = 0.1  # Low temperature for factual intelligence analysis
     timeout_seconds: float = 120.0

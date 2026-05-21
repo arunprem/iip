@@ -36,10 +36,10 @@ docker-down:
 	docker-compose down
 
 run: docker-up
-	uv run uvicorn backend.gateway.bff.main:app --reload --host 0.0.0.0 --port 8000
-
-run-iam:
-	uv run uvicorn backend.services.iam-svc.iam_svc.main:app --reload --port 8010
+	pnpm --filter iip-portal run dev & \
+	uv run uvicorn backend.services.iam-svc.iam_svc.main:app --port 8010 & \
+	uv run uvicorn backend.services.ml-gateway-svc.ml_gateway_svc.main:app --port 8020 & \
+	wait
 
 # ─── Build & Sign ─────────────────────────────────────────────────────────────
 build:
