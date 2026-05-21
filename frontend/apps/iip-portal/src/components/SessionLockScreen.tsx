@@ -6,10 +6,10 @@ import {
   LogOut,
   RefreshCw,
   ShieldAlert,
-  User,
 } from 'lucide-react';
 import { fetchCaptchaImage } from '../api/captcha';
 import { IipLogo } from './IipLogo';
+import { ProfileAvatar } from './ProfileAvatar';
 import { useAuthStore } from '../stores/authStore';
 import { getLoginErrorMessage } from '../utils/loginApiErrors';
 import { sanitizeCaptchaInput } from '../utils/captchaInput';
@@ -26,6 +26,7 @@ function FieldFeedback({ show, message }: { show: boolean; message?: string }) {
 export function SessionLockScreen() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const profilePhotoRevision = useAuthStore((s) => s.profilePhotoRevision);
   const lockReason = useAuthStore((s) => s.lockReason);
   const unlockSession = useAuthStore((s) => s.unlockSession);
   const switchAccount = useAuthStore((s) => s.switchAccount);
@@ -121,14 +122,22 @@ export function SessionLockScreen() {
 
         <div className="px-6 py-6">
           <div className="flex items-center gap-3 mb-6 p-3 rounded-xl bg-iip-bg border border-iip-border">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-iip-primary/10 text-iip-primary shrink-0">
-              <User size={18} aria-hidden />
-            </div>
+            <ProfileAvatar
+              name={user.full_name || user.username}
+              hasPhoto={Boolean(user.profile_photo_url)}
+              photoRevision={profilePhotoRevision}
+              className="h-10 w-10"
+            />
             <div className="min-w-0 text-left">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-iip-text-muted">
                 Signed in as
               </p>
-              <p className="text-sm font-semibold text-iip-text truncate">{user.username}</p>
+              <p className="text-sm font-semibold text-iip-text truncate">
+                {user.full_name || user.username}
+              </p>
+              {user.full_name && (
+                <p className="text-xs text-iip-text-muted truncate">@{user.username}</p>
+              )}
             </div>
           </div>
 

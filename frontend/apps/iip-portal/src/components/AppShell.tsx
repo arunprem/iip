@@ -17,6 +17,7 @@ export interface UserContext {
   clearanceLevel: ClassificationLevel
   jitElevated: boolean
   jitExpiresAt?: Date
+  profilePhotoUrl: string | null
 }
 
 export interface AppShellProps {

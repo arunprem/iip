@@ -5,8 +5,23 @@ function createImage(url: string): Promise<HTMLImageElement> {
     const image = new Image();
     image.addEventListener('load', () => resolve(image));
     image.addEventListener('error', () => reject(new Error('Failed to load image')));
-    image.setAttribute('crossOrigin', 'anonymous');
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      image.crossOrigin = 'anonymous';
+    }
     image.src = url;
+  });
+}
+
+/** Read a file as a data URL (reliable for cropper preview). */
+export function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('Could not read image file.'));
+    };
+    reader.onerror = () => reject(new Error('Could not read image file.'));
+    reader.readAsDataURL(file);
   });
 }
 

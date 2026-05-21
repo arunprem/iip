@@ -3,13 +3,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Camera, KeyRound, Save, UserCircle } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { uploadProfilePhoto, type ProfileData } from '../api/profile';
+import { AdminButton } from '../components/admin/AdminButton';
 import { AdminFormField } from '../components/admin/AdminFormField';
 import { AdminPageLayout } from '../components/admin/AdminPageLayout';
 import { ProfilePhotoCropModal } from '../components/profile/ProfilePhotoCropModal';
 import { getApiErrorMessage } from '../hooks/useIamRoles';
 import { useAuthStore } from '../stores/authStore';
 import { showToast } from '../stores/toastStore';
-import { fetchProfilePhotoObjectUrl } from '../utils/profilePhoto';
+import {
+  fetchProfilePhotoDataUrl,
+  fileToProfilePreviewDataUrl,
+} from '../utils/profilePhoto';
+import { readFileAsDataUrl } from '../utils/cropImage';
 
 const emptyProfileForm = {
   email: '',
@@ -27,6 +32,8 @@ const emptyPasswordForm = {
 export default function MyProfile() {
   const queryClient = useQueryClient();
   const refreshSessionProfile = useAuthStore((s) => s.refreshSessionProfile);
+  const bumpProfilePhoto = useAuthStore((s) => s.bumpProfilePhoto);
+  const setProfilePhotoDataUrl = useAuthStore((s) => s.setProfilePhotoDataUrl);
   const authUser = useAuthStore((s) => s.user);
 
   const [profileForm, setProfileForm] = useState(emptyProfileForm);
@@ -38,8 +45,6 @@ export default function MyProfile() {
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const photoObjectUrlRef = useRef<string | null>(null);
-  const cropObjectUrlRef = useRef<string | null>(null);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['my-profile'],
@@ -63,40 +68,26 @@ export default function MyProfile() {
     let cancelled = false;
 
     const loadPhoto = async () => {
-      if (photoObjectUrlRef.current) {
-        URL.revokeObjectURL(photoObjectUrlRef.current);
-        photoObjectUrlRef.current = null;
-      }
       if (!profile?.profile_photo_url) {
         setPhotoPreviewUrl(null);
         return;
       }
-      const url = await fetchProfilePhotoObjectUrl(photoVersion);
-      if (cancelled) {
-        if (url) URL.revokeObjectURL(url);
+      const dataUrl = await fetchProfilePhotoDataUrl(photoVersion);
+      if (cancelled || !dataUrl) {
         return;
       }
-      photoObjectUrlRef.current = url;
-      setPhotoPreviewUrl(url);
+      setPhotoPreviewUrl(dataUrl);
     };
 
     void loadPhoto();
 
     return () => {
       cancelled = true;
-      if (photoObjectUrlRef.current) {
-        URL.revokeObjectURL(photoObjectUrlRef.current);
-        photoObjectUrlRef.current = null;
-      }
     };
   }, [profile?.profile_photo_url, photoVersion]);
 
   const closeCropModal = () => {
     setCropModalOpen(false);
-    if (cropObjectUrlRef.current) {
-      URL.revokeObjectURL(cropObjectUrlRef.current);
-      cropObjectUrlRef.current = null;
-    }
     setCropImageSrc(null);
   };
 
@@ -140,10 +131,18 @@ export default function MyProfile() {
 
   const uploadPhotoMutation = useMutation({
     mutationFn: (file: File) => uploadProfilePhoto(file),
-    onSuccess: async () => {
+    onSuccess: async (data, file) => {
       closeCropModal();
-      setPhotoVersion((v) => v + 1);
-      await queryClient.invalidateQueries({ queryKey: ['my-profile'] });
+      queryClient.setQueryData(['my-profile'], data);
+
+      const preview = await fileToProfilePreviewDataUrl(file);
+      if (preview) {
+        setPhotoPreviewUrl(preview);
+        setProfilePhotoDataUrl(preview);
+      }
+
+      setPhotoVersion(Date.now());
+      bumpProfilePhoto();
       await refreshSessionProfile();
       showToast('success', 'Profile photo updated.');
     },
@@ -196,11 +195,14 @@ export default function MyProfile() {
     changePasswordMutation.mutate();
   };
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
+    const isImage =
+      file.type.startsWith('image/') ||
+      /\.(jpe?g|png|webp|gif)$/i.test(file.name);
+    if (!isImage) {
       showToast('error', 'Please choose a JPEG, PNG, or WebP image.');
       return;
     }
@@ -208,13 +210,13 @@ export default function MyProfile() {
       showToast('error', 'Source image must be 8 MB or smaller.');
       return;
     }
-    if (cropObjectUrlRef.current) {
-      URL.revokeObjectURL(cropObjectUrlRef.current);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setCropImageSrc(dataUrl);
+      setCropModalOpen(true);
+    } catch {
+      showToast('error', 'Could not open the selected image.');
     }
-    const objectUrl = URL.createObjectURL(file);
-    cropObjectUrlRef.current = objectUrl;
-    setCropImageSrc(objectUrl);
-    setCropModalOpen(true);
   };
 
   const handleCropConfirm = (file: File) => {
@@ -235,15 +237,13 @@ export default function MyProfile() {
       description="Update your account details, change your password, and upload your profile photo."
       icon={UserCircle}
     >
-      {cropImageSrc && (
-        <ProfilePhotoCropModal
-          imageSrc={cropImageSrc}
-          open={cropModalOpen}
-          onClose={closeCropModal}
-          onConfirm={handleCropConfirm}
-          isUploading={uploadPhotoMutation.isPending}
-        />
-      )}
+      <ProfilePhotoCropModal
+        imageSrc={cropImageSrc ?? ''}
+        open={cropModalOpen && Boolean(cropImageSrc)}
+        onClose={closeCropModal}
+        onConfirm={handleCropConfirm}
+        isUploading={uploadPhotoMutation.isPending}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,280px)_1fr]">
         <section className="dashboard-card p-6 flex flex-col items-center text-center">
@@ -255,6 +255,7 @@ export default function MyProfile() {
                   src={photoPreviewUrl}
                   alt=""
                   className="h-full w-full object-cover"
+                  onError={() => setPhotoPreviewUrl(null)}
                 />
               ) : (
                 <span className="text-3xl font-bold text-iip-primary">{initials}</span>
@@ -351,15 +352,16 @@ export default function MyProfile() {
                     className="form-control opacity-70 cursor-not-allowed"
                   />
                 </AdminFormField>
-                <div className="sm:col-span-2 flex justify-end">
-                  <button
+                <div className="sm:col-span-2 flex justify-end pt-1">
+                  <AdminButton
                     type="submit"
+                    variant="primary"
+                    size="sm"
                     disabled={updateProfileMutation.isPending}
-                    className="admin-btn admin-btn-primary"
                   >
-                    <Save size={16} />
+                    <Save size={15} aria-hidden />
                     {updateProfileMutation.isPending ? 'Saving…' : 'Save profile'}
-                  </button>
+                  </AdminButton>
                 </div>
               </form>
             )}
@@ -410,14 +412,16 @@ export default function MyProfile() {
                   className={`form-control ${passwordErrors.confirm_password ? 'is-invalid' : ''}`}
                 />
               </AdminFormField>
-              <div>
-                <button
+              <div className="flex justify-end pt-1">
+                <AdminButton
                   type="submit"
+                  variant="primary"
+                  size="sm"
                   disabled={changePasswordMutation.isPending}
-                  className="admin-btn admin-btn-secondary"
                 >
+                  <KeyRound size={15} aria-hidden />
                   {changePasswordMutation.isPending ? 'Updating…' : 'Update password'}
-                </button>
+                </AdminButton>
               </div>
             </form>
           </section>

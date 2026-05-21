@@ -17,6 +17,7 @@ import type { UserContext } from './AppShell';
 import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
 import { OfficeSelector } from './OfficeSelector';
+import { ProfileAvatar } from './ProfileAvatar';
 
 interface DashboardHeaderProps {
   user: UserContext;
@@ -114,6 +115,7 @@ export function DashboardHeader({ user, onMenuClick }: DashboardHeaderProps) {
   const lockSession = useAuthStore((state) => state.lockSession);
   const accessToken = useAuthStore((state) => state.accessToken);
   const sessionLocked = useAuthStore((state) => state.sessionLocked);
+  const profilePhotoRevision = useAuthStore((state) => state.profilePhotoRevision);
   const theme = useThemeStore((state) => state.theme);
   const toggleTheme = useThemeStore((state) => state.toggleTheme);
 
@@ -331,9 +333,11 @@ export function DashboardHeader({ user, onMenuClick }: DashboardHeaderProps) {
             aria-expanded={profileOpen}
             aria-haspopup="true"
           >
-            <div className="h-9 w-9 rounded-full bg-iip-primary/15 flex items-center justify-center text-iip-primary font-semibold text-sm">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
+            <ProfileAvatar
+              name={user.name}
+              hasPhoto={Boolean(user.profilePhotoUrl)}
+              photoRevision={profilePhotoRevision}
+            />
             <div className="hidden md:block text-left">
               <p className="text-sm font-semibold text-iip-text leading-tight">{user.name}</p>
               <p className="text-xs text-iip-text-muted">{user.role}</p>

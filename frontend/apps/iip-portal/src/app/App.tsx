@@ -148,6 +148,7 @@ const AuthenticatedLayout = () => {
     roles: officeRole ? [officeRole] : storeUser.roles,
     clearanceLevel: storeUser.clearance_level as UserContext['clearanceLevel'],
     jitElevated: storeUser.jit_elevated,
+    profilePhotoUrl: storeUser.profile_photo_url ?? null,
   }
 
   return (

@@ -1,5 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Cropper, { type Area, type Point } from 'react-easy-crop';
+import 'react-easy-crop/react-easy-crop.css';
 import { X } from 'lucide-react';
 import { getCroppedImageBlob } from '../../utils/cropImage';
 import { showToast } from '../../stores/toastStore';
@@ -23,6 +25,25 @@ export function ProfilePhotoCropModal({
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [imageReady, setImageReady] = useState(false);
+
+  useEffect(() => {
+    if (!open || !imageSrc) {
+      setImageReady(false);
+      return;
+    }
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+    setImageReady(false);
+
+    const img = new Image();
+    img.onload = () => setImageReady(true);
+    img.onerror = () => {
+      showToast('error', 'Could not load the image for cropping.');
+    };
+    img.src = imageSrc;
+  }, [open, imageSrc]);
 
   const onCropComplete = useCallback((_area: Area, pixels: Area) => {
     setCroppedAreaPixels(pixels);
@@ -45,14 +66,20 @@ export function ProfilePhotoCropModal({
 
   const busy = isUploading || isProcessing;
 
-  return (
+  const modal = (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/55 backdrop-blur-sm"
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60"
       role="dialog"
       aria-modal="true"
       aria-labelledby="crop-photo-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !busy) onClose();
+      }}
     >
-      <div className="w-full max-w-md rounded-2xl border border-iip-border bg-iip-surface shadow-2xl overflow-hidden">
+      <div
+        className="w-full max-w-md rounded-2xl border border-iip-border bg-iip-surface shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-5 py-4 border-b border-iip-border">
           <h2 id="crop-photo-title" className="text-sm font-semibold text-iip-text">
             Crop profile photo
@@ -68,18 +95,38 @@ export function ProfilePhotoCropModal({
           </button>
         </div>
 
-        <div className="relative h-72 bg-iip-bg">
-          <Cropper
-            image={imageSrc}
-            crop={crop}
-            zoom={zoom}
-            aspect={1}
-            cropShape="round"
-            showGrid={false}
-            onCropChange={setCrop}
-            onZoomChange={setZoom}
-            onCropComplete={onCropComplete}
-          />
+        <div className="relative w-full h-80 bg-zinc-800">
+          {!imageReady ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-zinc-300 text-sm">
+              <div className="h-8 w-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Loading image…
+            </div>
+          ) : (
+            <Cropper
+              image={imageSrc}
+              crop={crop}
+              zoom={zoom}
+              aspect={1}
+              cropShape="round"
+              showGrid
+              objectFit="contain"
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={onCropComplete}
+              style={{
+                containerStyle: {
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                },
+                cropAreaStyle: {
+                  border: '2px solid rgb(var(--color-iip-primary) / 1)',
+                },
+              }}
+            />
+          )}
         </div>
 
         <div className="px-5 py-4 space-y-3 border-t border-iip-border">
@@ -92,10 +139,13 @@ export function ProfilePhotoCropModal({
               step={0.05}
               value={zoom}
               onChange={(e) => setZoom(Number(e.target.value))}
-              disabled={busy}
+              disabled={busy || !imageReady}
               className="mt-1.5 w-full accent-iip-primary"
             />
           </label>
+          <p className="text-[11px] text-iip-text-muted">
+            Drag to reposition · use zoom to frame your face
+          </p>
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -108,7 +158,7 @@ export function ProfilePhotoCropModal({
             <button
               type="button"
               onClick={() => void handleSave()}
-              disabled={busy || !croppedAreaPixels}
+              disabled={busy || !imageReady || !croppedAreaPixels}
               className="admin-btn admin-btn-primary"
             >
               {busy ? 'Saving…' : 'Save photo'}
@@ -118,4 +168,6 @@ export function ProfilePhotoCropModal({
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }

@@ -45,8 +45,14 @@ interface AuthState {
   sessionInitFailed: boolean;
   sessionLocked: boolean;
   lockReason: SessionLockReason | null;
+  /** Bumps when profile photo changes so avatars refetch the image. */
+  profilePhotoRevision: number;
+  /** Cached data URL for lock screen (no token while locked). */
+  profilePhotoDataUrl: string | null;
 
   setTokens: (accessToken: string, refreshToken: string) => void;
+  bumpProfilePhoto: () => void;
+  setProfilePhotoDataUrl: (url: string | null) => void;
   setUser: (user: User) => void;
   setCurrentOfficeId: (officeId: string) => void;
   login: (username: string, password: string, captchaId: string, captchaCode: string) => Promise<void>;
@@ -76,8 +82,15 @@ export const useAuthStore = create<AuthState>()(
       sessionInitFailed: false,
       sessionLocked: false,
       lockReason: null,
+      profilePhotoRevision: 0,
+      profilePhotoDataUrl: null,
 
       setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
+
+      bumpProfilePhoto: () =>
+        set({ profilePhotoRevision: Date.now(), profilePhotoDataUrl: null }),
+
+      setProfilePhotoDataUrl: (url) => set({ profilePhotoDataUrl: url }),
 
       setUser: (user) => {
         const offices = Array.isArray(user.offices) ? user.offices : [];
@@ -137,6 +150,7 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           currentOfficeId: null,
           actionGrants: [],
+          profilePhotoDataUrl: null,
           sessionInitializing: false,
           sessionInitFailed: false,
           sessionLocked: false,
@@ -285,6 +299,7 @@ export const useAuthStore = create<AuthState>()(
         sessionLocked: state.sessionLocked,
         lockReason: state.lockReason,
         user: state.user,
+        profilePhotoDataUrl: state.profilePhotoDataUrl,
       }),
       onRehydrateStorage: () => (state, err) => {
         if (err) {
