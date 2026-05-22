@@ -2,43 +2,43 @@
 IAM Service — Authentication Router.
 
 Handles:
-  - POST /login          : Username/password → JWT access + refresh tokens
-  - POST /refresh        : Rotate refresh token
-  - POST /logout         : Revoke session (blacklist in Redis)
-  - GET  /me             : Return current user's identity and clearance
+  - POST /login          : Captcha + Keycloak password grant → OIDC tokens
+  - POST /refresh        : Keycloak refresh token rotation
+  - POST /unlock         : Re-auth after session lock (captcha + Keycloak)
+  - POST /logout         : Client-side session end (Keycloak revoke optional)
+  - GET  /me             : Current user profile from PostgreSQL
 """
 
 from __future__ import annotations
 
-import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from iip_core.auth import (
-    CurrentUser,
-    create_access_token,
-    create_refresh_token,
-    get_current_user,
-    verify_password,
-)
-from redis.asyncio import Redis
-from iam_svc.cache import get_redis
-from iam_svc.services.captcha_store import consume_captcha
-from iam_svc.repositories.office_repository import OfficeRepository
-from iam_svc.repositories.user_repository import UserRepository
-from iip_core.db import get_db
+from iip_core.auth import CurrentUser
 from iip_core.errors import ErrorCode, IIPException
+from iip_core.keycloak import (
+    KeycloakAuthError,
+    keycloak_refresh_grant,
+    keycloak_token_response,
+)
 from iip_core.logging import get_logger
 from iip_core.settings import BaseServiceSettings, get_settings
+from redis.asyncio import Redis
+
+from iam_svc.cache import get_redis
+from iam_svc.dependencies import get_current_user_db
+from iam_svc.repositories.office_repository import OfficeRepository
+from iam_svc.repositories.user_repository import UserRepository
+from iam_svc.services.auth_mfa import AuthResultResponse, build_auth_result
+from iam_svc.services.captcha_store import consume_captcha
+from iip_core.db import get_db
+from iip_core.keycloak import keycloak_password_grant
 
 router = APIRouter()
 logger = get_logger(__name__)
-
-
-# ─── Request / Response Models ────────────────────────────────────────────────
 
 
 class LoginRequest(BaseModel):
@@ -91,7 +91,6 @@ class UnlockRequest(BaseModel):
 
 
 def _pick_default_office_id(offices: list[OfficeAssignment]) -> str | None:
-    """Prefer PHQ, then any office where the user is a system admin."""
     if not offices:
         return None
     for preferred_code in ("PHQ",):
@@ -105,7 +104,7 @@ def _pick_default_office_id(offices: list[OfficeAssignment]) -> str | None:
 
 
 async def _validate_captcha(
-    redis: Redis,
+    redis: Redis | None,
     captcha_id: str,
     captcha_code: str,
 ) -> None:
@@ -128,113 +127,114 @@ async def _validate_captcha(
         )
 
 
-async def _issue_tokens_for_user(
-    user,
+async def _authenticate_via_keycloak(
+    username: str,
+    password: str,
     db: AsyncSession,
+    redis: Redis,
     settings: BaseServiceSettings,
-) -> TokenResponse:
-    jti = str(uuid.uuid4())
-    office_repo = OfficeRepository(db)
-    office_assignments = await office_repo.get_user_offices(user.id)
-    roles = (
-        [a.role.role_name for a in office_assignments]
-        if office_assignments
-        else [role.role_name for role in user.roles]
+    *,
+    purpose: str,
+) -> AuthResultResponse:
+    """Ensure IAM user exists locally, validate password with Keycloak, apply MFA gate."""
+    repo = UserRepository(db)
+    user = await repo.get_by_username(username.strip())
+
+    if not user or not user.is_active:
+        raise IIPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code=ErrorCode.UNAUTHORIZED,
+            detail="Invalid username or password.",
+        )
+
+    try:
+        kc_payload = await keycloak_password_grant(username, password, settings)
+    except KeycloakAuthError as exc:
+        logger.warning("keycloak_login_failed", username=username)
+        raise IIPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code=ErrorCode.UNAUTHORIZED,
+            detail="Invalid username or password.",
+        ) from exc
+
+    return await build_auth_result(
+        user=user,
+        keycloak_payload=kc_payload,
+        db=db,
+        redis=redis,
+        settings=settings,
+        purpose=purpose,  # type: ignore[arg-type]
     )
-    token_payload = {
-        "sub": str(user.id),
-        "jti": jti,
-        "username": user.username,
-        "roles": roles,
-        "groups": [user.department],
-        "clearance_level": user.clearance_level,
-        "jit_elevated": False,
-    }
-    access_token = create_access_token(token_payload, settings)
-    refresh_token = create_refresh_token(str(user.id), jti, settings)
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_in=settings.jwt_access_token_expire_minutes * 60,
-    )
 
 
-# ─── Routes ───────────────────────────────────────────────────────────────────
-
-
-@router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+@router.post("/login", response_model=AuthResultResponse, status_code=status.HTTP_200_OK)
 async def login(
     payload: LoginRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[BaseServiceSettings, Depends(get_settings)],
-    redis: Annotated[Redis, Depends(get_redis)],
-) -> TokenResponse:
-    """Authenticate a user and return access + refresh tokens.
-
-    In a full implementation, credentials are validated against the users table.
-    JIT sessions and MFA challenges are triggered here based on user clearance.
-    """
-    repo = UserRepository(db)
-    user = await repo.get_by_username(payload.username)
-
+    redis: Annotated[Redis | None, Depends(get_redis)],
+) -> AuthResultResponse:
+    """Captcha + Keycloak password grant; MFA challenge when required."""
     await _validate_captcha(redis, payload.captcha_id, payload.captcha_code)
-
-    if not user or not user.is_active or not verify_password(payload.password, user.password_hash):
-        logger.warning("login_failed", username=payload.username)
-        raise IIPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            error_code=ErrorCode.UNAUTHORIZED,
-            detail="Invalid username or password.",
-        )
-
-    logger.info("login_success", username=payload.username, user_id=str(user.id))
-
-    return await _issue_tokens_for_user(user, db, settings)
+    result = await _authenticate_via_keycloak(
+        payload.username, payload.password, db, redis, settings, purpose="login"
+    )
+    if not result.mfa_required:
+        logger.info("login_success", username=payload.username)
+    return result
 
 
-@router.post("/unlock", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+@router.post("/unlock", response_model=AuthResultResponse, status_code=status.HTTP_200_OK)
 async def unlock_session(
     payload: UnlockRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[BaseServiceSettings, Depends(get_settings)],
-    redis: Annotated[Redis, Depends(get_redis)],
-) -> TokenResponse:
-    """Re-authenticate the current user after idle lock or token expiry (password + captcha only)."""
+    redis: Annotated[Redis | None, Depends(get_redis)],
+) -> AuthResultResponse:
     await _validate_captcha(redis, payload.captcha_id, payload.captcha_code)
+    result = await _authenticate_via_keycloak(
+        payload.username, payload.password, db, redis, settings, purpose="unlock"
+    )
+    if not result.mfa_required:
+        logger.info("unlock_success", username=payload.username)
+    return result
 
-    repo = UserRepository(db)
-    user = await repo.get_by_username(payload.username)
 
-    if not user or not user.is_active or not verify_password(payload.password, user.password_hash):
-        logger.warning("unlock_failed", username=payload.username)
+@router.post("/refresh", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+async def refresh_tokens(
+    payload: RefreshRequest,
+    settings: Annotated[BaseServiceSettings, Depends(get_settings)],
+) -> TokenResponse:
+    """Rotate access token using Keycloak refresh token."""
+    try:
+        token_payload = await keycloak_refresh_grant(payload.refresh_token, settings)
+    except KeycloakAuthError as exc:
         raise IIPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             error_code=ErrorCode.UNAUTHORIZED,
-            detail="Invalid username or password.",
-        )
+            detail="Session expired. Please sign in again.",
+        ) from exc
 
-    logger.info("unlock_success", username=payload.username, user_id=str(user.id))
-    return await _issue_tokens_for_user(user, db, settings)
+    tokens = keycloak_token_response(token_payload)
+    return TokenResponse(
+        access_token=str(tokens["access_token"]),
+        refresh_token=str(tokens["refresh_token"]),
+        expires_in=int(tokens["expires_in"]),
+    )
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
-    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
 ) -> None:
-    """Invalidate the current user's session.
-
-    In production, adds the JTI to a Redis blacklist until token expiry.
-    """
-    # TODO: Blacklist token JTI in Redis
     logger.info("logout", user_id=current_user.user_id, jti=current_user.token_jti)
 
 
 @router.get("/me", response_model=MeResponse)
 async def get_me(
-    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> MeResponse:
-    """Return the authenticated user's identity, roles, and clearance level."""
     from iam_svc.services.profile_photo import profile_photo_url
 
     repo = UserRepository(db)

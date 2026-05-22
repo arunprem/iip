@@ -35,9 +35,20 @@ docker-up:
 docker-down:
 	docker-compose down
 
+# IAM with reload limited to app code (avoids .venv / node_modules reload storms)
+iam-svc-dev:
+	cd backend/services/iam-svc && uv run uvicorn iam_svc.main:app \
+		--host 0.0.0.0 --port 8010 --reload \
+		--reload-dir iam_svc \
+		--reload-dir ../../libs/iip-core/iip_core
+
 run: docker-up
 	pnpm --filter iip-portal run dev & \
+	KEYCLOAK_SERVER_URL=http://localhost:8081 \
+	KEYCLOAK_ENABLED=true \
 	uv run uvicorn backend.services.iam-svc.iam_svc.main:app --port 8010 & \
+	KEYCLOAK_SERVER_URL=http://localhost:8081 \
+	KEYCLOAK_ENABLED=true \
 	uv run uvicorn backend.services.ml-gateway-svc.ml_gateway_svc.main:app --port 8020 & \
 	wait
 

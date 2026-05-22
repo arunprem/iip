@@ -16,15 +16,45 @@ const MUTATION_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 const SILENT_PATH_PREFIXES = [
   '/auth/login',
   '/auth/unlock',
+  '/auth/refresh',
   '/auth/me',
   '/auth/me/profile',
   '/auth/me/photo',
   '/captcha',
 ];
 
-const AUTH_MUTATION_PATHS = ['/auth/login', '/auth/unlock'];
+const AUTH_MUTATION_PATHS = ['/auth/login', '/auth/unlock', '/auth/refresh', '/auth/mfa'];
 
 let interceptorsAttached = false;
+
+/** Single in-flight refresh so parallel 401s share one token rotation. */
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function rotateAccessToken(): Promise<string | null> {
+  const { refreshToken, setTokens } = useAuthStore.getState();
+  if (!refreshToken) return null;
+
+  if (!refreshInFlight) {
+    refreshInFlight = apiClient
+      .post<{ access_token: string; refresh_token: string }>(
+        '/auth/refresh',
+        { refresh_token: refreshToken },
+        { skipToast: true }
+      )
+      .then((res) => {
+        const access = res.data.access_token;
+        const refresh = res.data.refresh_token;
+        setTokens(access, refresh);
+        return access;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+
+  return refreshInFlight;
+}
 
 function shouldSkipToast(url: string | undefined, config: InternalAxiosRequestConfig): boolean {
   if (config.skipToast) return true;
@@ -42,6 +72,8 @@ declare module 'axios' {
     skipToast?: boolean;
     /** Suppress only the success toast (errors still shown unless skipToast). */
     skipSuccessToast?: boolean;
+    /** Internal: set after a successful token refresh retry. */
+    _retryAfterRefresh?: boolean;
   }
 }
 
@@ -88,7 +120,7 @@ export function setupApiClient() {
       }
       return response;
     },
-    (error: AxiosError) => {
+    async (error: AxiosError) => {
       const config = error.config;
       const status = error.response?.status;
       const requestUrl = String(config?.url ?? '');
@@ -96,6 +128,24 @@ export function setupApiClient() {
       const authState = useAuthStore.getState();
       const isAuthMutation = AUTH_MUTATION_PATHS.some((p) => requestUrl.includes(p));
       const isCaptchaRequest = requestUrl.includes('/captcha');
+
+      const canTryRefresh =
+        status === 401 &&
+        config &&
+        !config._retryAfterRefresh &&
+        !isAuthMutation &&
+        !isCaptchaRequest &&
+        !authState.sessionLocked &&
+        Boolean(authState.refreshToken);
+
+      if (canTryRefresh) {
+        const newAccessToken = await rotateAccessToken();
+        if (newAccessToken) {
+          config._retryAfterRefresh = true;
+          config.headers.Authorization = `Bearer ${newAccessToken}`;
+          return apiClient.request(config);
+        }
+      }
 
       if (status === 401 && !isAuthMutation && !isCaptchaRequest) {
         if (authState.user) {

@@ -15,13 +15,13 @@ import {
 } from 'lucide-react';
 import type { UserContext } from './AppShell';
 import { useAuthStore } from '../stores/authStore';
+import { useSidebarStore } from '../stores/sidebarStore';
 import { useThemeStore } from '../stores/themeStore';
 import { OfficeSelector } from './OfficeSelector';
 import { ProfileAvatar } from './ProfileAvatar';
 
 interface DashboardHeaderProps {
   user: UserContext;
-  onMenuClick?: () => void;
 }
 
 interface Notification {
@@ -109,7 +109,10 @@ const typeStyles: Record<Notification['type'], string> = {
   success: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400',
 };
 
-export function DashboardHeader({ user, onMenuClick }: DashboardHeaderProps) {
+export function DashboardHeader({ user }: DashboardHeaderProps) {
+  const collapsed = useSidebarStore((s) => s.collapsed);
+  const toggleCollapsed = useSidebarStore((s) => s.toggleCollapsed);
+  const toggleMobile = useSidebarStore((s) => s.toggleMobile);
   const navigate = useNavigate();
   const logout = useAuthStore((state) => state.logout);
   const lockSession = useAuthStore((state) => state.lockSession);
@@ -163,19 +166,28 @@ export function DashboardHeader({ user, onMenuClick }: DashboardHeaderProps) {
 
   const canLockSession = Boolean(accessToken && !sessionLocked);
 
+  const handleSidebarToggle = () => {
+    if (window.matchMedia('(min-width: 1024px)').matches) {
+      toggleCollapsed();
+    } else {
+      toggleMobile();
+    }
+  };
+
   return (
     <header className="relative z-40 h-16 shrink-0 bg-iip-surface border-b border-iip-border flex items-center justify-between gap-4 px-4 md:px-6">
-      <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
         <button
           type="button"
-          onClick={onMenuClick}
-          className="lg:hidden p-2 rounded-lg text-iip-text-muted hover:bg-iip-surface-hover hover:text-iip-text"
-          aria-label="Open menu"
+          onClick={handleSidebarToggle}
+          className="shrink-0 p-2.5 rounded-lg text-iip-text-muted hover:bg-iip-surface-hover hover:text-iip-text border border-transparent"
+          aria-label={collapsed ? 'Expand sidebar' : 'Toggle sidebar menu'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          <Menu size={20} />
+          <Menu size={20} aria-hidden />
         </button>
 
-        <div className="hidden sm:flex items-center flex-1 max-w-md">
+        <div className="flex items-center flex-1 min-w-0 max-w-xl">
           <div className="relative w-full">
             <Search
               size={18}

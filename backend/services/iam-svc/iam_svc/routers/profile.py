@@ -9,11 +9,13 @@ from fastapi import APIRouter, Depends, File, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field
 
-from iip_core.auth import CurrentUser, hash_password, verify_password
+from iip_core.auth import CurrentUser, hash_password
 from iip_core.db import AsyncSession, get_db
 from iip_core.errors import ErrorCode, IIPException
 from iip_core.logging import get_logger
+from iip_core.settings import BaseServiceSettings, get_settings
 from iam_svc.dependencies import get_current_user_db
+from iam_svc.services.keycloak_sync import sync_user_credentials, verify_password_with_keycloak
 from iam_svc.repositories.user_repository import UserRepository
 from iam_svc.routers.users import _validate_unique_fields
 from iam_svc.services.profile_photo import (
@@ -122,6 +124,7 @@ async def change_my_password(
     payload: ChangePasswordRequest,
     current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[BaseServiceSettings, Depends(get_settings)],
 ) -> None:
     if payload.current_password == payload.new_password:
         raise IIPException(
@@ -134,7 +137,9 @@ async def change_my_password(
     repo = UserRepository(db)
     user = await repo.get_by_id_or_error(current_user.user_id)
 
-    if not verify_password(payload.current_password, user.password_hash):
+    if not await verify_password_with_keycloak(
+        settings, current_user.username, payload.current_password
+    ):
         raise IIPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             error_code=ErrorCode.VALIDATION_ERROR,
@@ -144,6 +149,7 @@ async def change_my_password(
 
     user.password_hash = hash_password(payload.new_password)
     await repo.update(user)
+    await sync_user_credentials(settings, user, payload.new_password)
     logger.info("password_changed", user_id=str(user.id), by=current_user.username)
 
 

@@ -19,6 +19,7 @@ from jose import JWTError, jwt
 import bcrypt
 from pydantic import BaseModel
 
+from iip_core.keycloak import decode_keycloak_access_token
 from iip_core.settings import BaseServiceSettings, ClassificationLevel, get_settings
 
 # ─── Password Hashing ─────────────────────────────────────────────────────────
@@ -117,11 +118,30 @@ def decode_token(token: str, settings: BaseServiceSettings) -> dict[str, Any]:
 # ─── FastAPI Dependency ────────────────────────────────────────────────────────
 
 
-def get_current_user(
+async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
     settings: Annotated[BaseServiceSettings, Depends(get_settings)],
 ) -> CurrentUser:
     """FastAPI dependency: extract and validate the current authenticated user."""
+    if settings.keycloak_enabled:
+        raw = await decode_keycloak_access_token(credentials.credentials, settings)
+        username = (raw.get("preferred_username") or raw.get("username") or "").strip()
+        if not username:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired authentication token.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return CurrentUser(
+            user_id=str(raw.get("sub", "")),
+            username=username,
+            roles=[],
+            groups=[],
+            clearance_level=ClassificationLevel.UNCLASSIFIED,
+            jit_elevated=False,
+            token_jti=str(raw.get("jti") or raw.get("sub", "")),
+        )
+
     raw = decode_token(credentials.credentials, settings)
 
     if raw.get("type") == "refresh":

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Cropper, { type Area, type Point } from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
-import { X } from 'lucide-react';
+import { Loader2, Save, X } from 'lucide-react';
+import { AdminButton } from '../admin/AdminButton';
 import { getCroppedImageBlob } from '../../utils/cropImage';
 import { showToast } from '../../stores/toastStore';
 
@@ -129,7 +130,7 @@ export function ProfilePhotoCropModal({
           )}
         </div>
 
-        <div className="px-5 py-4 space-y-3 border-t border-iip-border">
+        <div className="px-5 py-4 space-y-3 border-t border-iip-border bg-iip-surface">
           <label className="block text-xs font-medium text-iip-text-muted">
             Zoom
             <input
@@ -146,24 +147,27 @@ export function ProfilePhotoCropModal({
           <p className="text-[11px] text-iip-text-muted">
             Drag to reposition · use zoom to frame your face
           </p>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={busy}
-              className="admin-btn admin-btn-secondary"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSave()}
-              disabled={busy || !imageReady || !croppedAreaPixels}
-              className="admin-btn admin-btn-primary"
-            >
-              {busy ? 'Saving…' : 'Save photo'}
-            </button>
-          </div>
+        </div>
+
+        <div className="admin-form-panel-footer">
+          <AdminButton variant="secondary" size="sm" onClick={onClose} disabled={busy}>
+            <X size={15} aria-hidden />
+            Cancel
+          </AdminButton>
+          <span className="admin-form-actions-spacer flex-1" aria-hidden />
+          <AdminButton
+            variant="primary"
+            size="sm"
+            onClick={() => void handleSave()}
+            disabled={busy || !imageReady || !croppedAreaPixels}
+          >
+            {busy ? (
+              <Loader2 size={15} className="animate-spin shrink-0" aria-hidden />
+            ) : (
+              <Save size={15} aria-hidden />
+            )}
+            {busy ? 'Saving…' : 'Save photo'}
+          </AdminButton>
         </div>
       </div>
     </div>

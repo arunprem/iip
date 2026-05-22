@@ -14,13 +14,13 @@ def test_settings():
     return BaseServiceSettings(
         environment="local",
         service_name="test",
+        keycloak_enabled=False,
         jwt_secret_key="supersecret",
         jwt_algorithm="HS256",
         jwt_access_token_expire_minutes=15,
         jwt_refresh_token_expire_days=7,
-        db_dsn="sqlite+aiosqlite:///:memory:",
-        opa_url="http://localhost:8181",
-        runai_llm_url="http://localhost:8000"
+        database_url="postgresql+asyncpg://iip_user:iip_secret_password@localhost:5432/iip_db",
+        opa_base_url="http://localhost:8181",
     )
 
 def test_password_hashing():
@@ -36,7 +36,8 @@ def test_jwt_creation_and_decoding(test_settings):
         "sub": "user-123",
         "username": "asha",
         "roles": ["SENIOR_ANALYST"],
-        "jti": "random-uuid"
+        "jti": "random-uuid",
+        "clearance_level": "UNCLASSIFIED",
     }
     
     token = create_access_token(payload, test_settings)

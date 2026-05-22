@@ -3,6 +3,9 @@ import type { NavMenuItem } from '../hooks/useNavMenus';
 /** Paths always reachable when signed in (no menu privilege required). */
 export const ALWAYS_ALLOWED_PATHS = ['/dashboard', '/unauthorized', '/profile'] as const;
 
+/** Opened from System configuration hub — not listed as separate menu items. */
+export const SYSTEM_CONFIGURATION_CHILD_PATHS = ['/system/security'] as const;
+
 export function collectMenuPaths(items: NavMenuItem[]): string[] {
   const paths: string[] = [];
   const walk = (nodes: NavMenuItem[]) => {
@@ -27,6 +30,15 @@ export function isPathAuthorized(pathname: string, menuPaths: string[]): boolean
   }
 
   if (path === '/') return true;
+
+  const hasSystemConfiguration = menuPaths.some(
+    (p) => p.replace(/\/+$/, '') === '/system/configuration'
+  );
+  if (hasSystemConfiguration) {
+    for (const child of SYSTEM_CONFIGURATION_CHILD_PATHS) {
+      if (path === child) return true;
+    }
+  }
 
   for (const menuPath of menuPaths) {
     if (!menuPath) continue;

@@ -287,6 +287,17 @@
     @apply px-3 py-2 border-b border-iip-border/60 align-top;
   }
 
+  @keyframes sidebar-flyout-in {
+    from {
+      opacity: 0;
+      transform: translateX(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
   .workbench-prose--streaming > *:last-child::after {
     content: '';
     @apply inline-block w-1.5 h-4 ml-0.5 align-middle bg-iip-primary/70 animate-pulse rounded-sm;

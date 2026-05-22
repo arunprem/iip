@@ -32,7 +32,7 @@ export interface AppShellProps {
 function AppFooter() {
   return (
     <div
-      className="classification-banner h-7 shrink-0 flex items-center justify-center font-sans text-[11px] sticky bottom-0 z-50 border-t font-medium tracking-normal"
+      className="classification-banner h-7 shrink-0 flex items-center justify-center font-sans text-[11px] border-t font-medium tracking-normal"
       role="contentinfo"
       aria-label="Application footer"
     >

@@ -68,10 +68,34 @@ class BaseServiceSettings(BaseSettings):
     kafka_audit_topic: str = "iip.audit.events"
     kafka_alert_topic: str = "iip.alert.events"
 
-    # ── Auth & JWT ───────────────────────────────────────────────────────────
+    # ── Keycloak (OIDC) ───────────────────────────────────────────────────────
+    keycloak_enabled: bool = Field(
+        default=True,
+        description="When true, APIs validate Keycloak RS256 tokens; login uses Keycloak password grant",
+    )
+    keycloak_server_url: str = Field(
+        default="http://localhost:8081",
+        description="Keycloak base URL (no trailing slash; host port 8081 in docker-compose)",
+    )
+    keycloak_realm: str = "iip"
+    keycloak_client_id: str = "iip-backend"
+    keycloak_client_secret: str = Field(
+        default="iip-backend-secret-dev-only",
+        description="Confidential client secret for token and admin API calls",
+    )
+    keycloak_admin_username: str = Field(
+        default="admin",
+        description="Master-realm admin user for Keycloak Admin REST API (dev)",
+    )
+    keycloak_admin_password: str = Field(
+        default="admin",
+        description="Master-realm admin password (dev only)",
+    )
+
+    # ── Auth & JWT (legacy / tests when keycloak_enabled=false) ───────────────
     jwt_secret_key: str = Field(
         default="CHANGE_ME_IN_PRODUCTION_USE_VAULT",
-        description="HMAC-SHA256 JWT signing key — override via Vault in production",
+        description="HMAC-SHA256 JWT signing key — used only when keycloak_enabled=false",
     )
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60

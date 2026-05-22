@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from iip_core.auth import CurrentUser, bearer_scheme, get_current_user
 from iip_core.db import get_db
-from iip_core.settings import BaseServiceSettings, get_settings
+from iip_core.settings import BaseServiceSettings, ClassificationLevel, get_settings
 from iam_svc.models.role import Role
+from iam_svc.repositories.office_repository import OfficeRepository
 from iam_svc.repositories.user_repository import UserRepository
 from iam_svc.services.permission_service import PermissionService
 
@@ -22,14 +23,30 @@ async def get_current_user_db(
     settings: Annotated[BaseServiceSettings, Depends(get_settings)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> CurrentUser:
-    user = get_current_user(credentials, settings)
-    db_user = await UserRepository(db).get_by_id(user.user_id)
-    if not db_user:
+    user = await get_current_user(credentials, settings)
+    repo = UserRepository(db)
+    if settings.keycloak_enabled:
+        db_user = await repo.get_by_username(user.username)
+    else:
+        db_user = await repo.get_by_id(user.user_id)
+    if not db_user or not db_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Session is invalid. Please sign in again.",
         )
-    return user.model_copy(update={"roles": [r.role_name for r in db_user.roles]})
+    office_repo_role_names: list[str] = []
+    assignments = await OfficeRepository(db).get_user_offices(db_user.id)
+    if assignments:
+        office_repo_role_names = [a.role.role_name for a in assignments]
+    roles = office_repo_role_names if office_repo_role_names else [r.role_name for r in db_user.roles]
+    return user.model_copy(
+        update={
+            "user_id": str(db_user.id),
+            "roles": roles,
+            "groups": [db_user.department],
+            "clearance_level": ClassificationLevel(db_user.clearance_level),
+        }
+    )
 
 
 async def get_office_id(

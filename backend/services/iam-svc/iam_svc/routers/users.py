@@ -12,7 +12,8 @@ from iip_core.auth import CurrentUser, hash_password
 from iip_core.db import AsyncSession, get_db
 from iip_core.errors import ErrorCode, IIPException
 from iip_core.logging import get_logger
-from iip_core.settings import ClassificationLevel
+from iip_core.settings import BaseServiceSettings, ClassificationLevel, get_settings
+from iam_svc.services.keycloak_sync import set_user_enabled, sync_user_credentials
 from iam_svc.dependencies import get_current_user_db, require_system_admin_role
 from iam_svc.models.role import Role
 from iam_svc.models.user import User
@@ -260,6 +261,7 @@ async def create_user(
     current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
     _: Annotated[Role, Depends(require_system_admin_role)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[BaseServiceSettings, Depends(get_settings)],
 ) -> CreateUserResponse:
     repo = UserRepository(db)
     username = payload.username.strip()
@@ -304,6 +306,8 @@ async def create_user(
             raise
         created = await repo.get_by_id_or_error(created.id)
 
+    await sync_user_credentials(settings, created, plain_password)
+
     logger.info("user_created", username=username, by=current_user.username)
     base = _user_to_response(created)
     return CreateUserResponse(**base.model_dump(), initial_password=initial_password)
@@ -326,6 +330,7 @@ async def update_user(
     current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
     _: Annotated[Role, Depends(require_system_admin_role)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[BaseServiceSettings, Depends(get_settings)],
 ) -> UserResponse:
     repo = UserRepository(db)
     user = await repo.get_by_id_or_error(user_id)
@@ -347,8 +352,10 @@ async def update_user(
         user.department = payload.department.strip()
     if payload.clearance_level is not None:
         user.clearance_level = payload.clearance_level.value
+    password_to_sync: str | None = None
     if payload.password:
         user.password_hash = hash_password(payload.password)
+        password_to_sync = payload.password
 
     if payload.office_assignments is not None:
         assignments = await _resolve_office_assignments(db, payload.office_assignments)
@@ -366,6 +373,8 @@ async def update_user(
             raise
 
     updated = await repo.update(user)
+    if password_to_sync:
+        await sync_user_credentials(settings, updated, password_to_sync)
     logger.info("user_updated", user_id=user_id, by=current_user.username)
     return _user_to_response(updated)
 
@@ -376,11 +385,13 @@ async def activate_user(
     current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
     _: Annotated[Role, Depends(require_system_admin_role)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[BaseServiceSettings, Depends(get_settings)],
 ) -> UserResponse:
     repo = UserRepository(db)
     user = await repo.get_by_id_or_error(user_id)
     user.is_active = True
     updated = await repo.update(user)
+    await set_user_enabled(settings, updated.username, True)
     logger.info("user_activated", user_id=user_id, by=current_user.username)
     return _user_to_response(updated)
 
@@ -391,6 +402,7 @@ async def deactivate_user(
     current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
     _: Annotated[Role, Depends(require_system_admin_role)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[BaseServiceSettings, Depends(get_settings)],
 ) -> UserResponse:
     if str(current_user.user_id) == user_id:
         raise IIPException(
@@ -402,5 +414,6 @@ async def deactivate_user(
     user = await repo.get_by_id_or_error(user_id)
     user.is_active = False
     updated = await repo.update(user)
+    await set_user_enabled(settings, updated.username, False)
     logger.info("user_deactivated", user_id=user_id, by=current_user.username)
     return _user_to_response(updated)

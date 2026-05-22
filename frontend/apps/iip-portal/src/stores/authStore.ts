@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { apiClient } from '../api/http';
+import { type AuthResult, isMfaChallenge } from '../api/mfa';
+
+export type LoginFlowResult =
+  | { status: 'complete' }
+  | { status: 'mfa_verify'; mfaToken: string }
+  | { status: 'mfa_enroll'; mfaToken: string };
 
 export interface OfficeAssignment {
   office_id: string;
@@ -55,10 +61,20 @@ interface AuthState {
   setProfilePhotoDataUrl: (url: string | null) => void;
   setUser: (user: User) => void;
   setCurrentOfficeId: (officeId: string) => void;
-  login: (username: string, password: string, captchaId: string, captchaCode: string) => Promise<void>;
+  login: (
+    username: string,
+    password: string,
+    captchaId: string,
+    captchaCode: string
+  ) => Promise<LoginFlowResult>;
   logout: () => void;
   lockSession: (reason: SessionLockReason) => void;
-  unlockSession: (password: string, captchaId: string, captchaCode: string) => Promise<void>;
+  unlockSession: (
+    password: string,
+    captchaId: string,
+    captchaCode: string
+  ) => Promise<LoginFlowResult>;
+  finishAuthTokens: (accessToken: string, refreshToken: string) => Promise<void>;
   switchAccount: () => void;
   fetchMe: () => Promise<void>;
   fetchMeWithTimeout: (timeoutMs?: number) => Promise<void>;
@@ -116,10 +132,16 @@ export const useAuthStore = create<AuthState>()(
         void get().fetchPermissions();
       },
 
+      finishAuthTokens: async (accessToken, refreshToken) => {
+        set({ accessToken, refreshToken, sessionLocked: false, lockReason: null });
+        await get().fetchMe();
+        await get().fetchPermissions();
+      },
+
       login: async (username, password, captchaId, captchaCode) => {
         set({ isLoading: true });
         try {
-          const res = await apiClient.post(
+          const res = await apiClient.post<AuthResult>(
             '/auth/login',
             {
               username,
@@ -129,12 +151,18 @@ export const useAuthStore = create<AuthState>()(
             },
             { skipToast: true }
           );
-          set({
-            accessToken: res.data.access_token,
-            refreshToken: res.data.refresh_token,
-          });
-          await get().fetchMe();
-          await get().fetchPermissions();
+          const data = res.data;
+          if (isMfaChallenge(data)) {
+            if (data.enrollment_required) {
+              return { status: 'mfa_enroll', mfaToken: data.mfa_token! };
+            }
+            return { status: 'mfa_verify', mfaToken: data.mfa_token! };
+          }
+          if (!data.access_token || !data.refresh_token) {
+            throw new Error('Invalid login response.');
+          }
+          await get().finishAuthTokens(data.access_token, data.refresh_token);
+          return { status: 'complete' };
         } catch (error) {
           get().logout();
           throw error;
@@ -209,7 +237,7 @@ export const useAuthStore = create<AuthState>()(
         }
         set({ isLoading: true });
         try {
-          const res = await apiClient.post(
+          const res = await apiClient.post<AuthResult>(
             '/auth/unlock',
             {
               username,
@@ -219,14 +247,18 @@ export const useAuthStore = create<AuthState>()(
             },
             { skipToast: true }
           );
-          set({
-            accessToken: res.data.access_token,
-            refreshToken: res.data.refresh_token,
-            sessionLocked: false,
-            lockReason: null,
-          });
-          await get().fetchMe();
-          await get().fetchPermissions();
+          const data = res.data;
+          if (isMfaChallenge(data)) {
+            if (data.enrollment_required) {
+              return { status: 'mfa_enroll', mfaToken: data.mfa_token! };
+            }
+            return { status: 'mfa_verify', mfaToken: data.mfa_token! };
+          }
+          if (!data.access_token || !data.refresh_token) {
+            throw new Error('Invalid unlock response.');
+          }
+          await get().finishAuthTokens(data.access_token, data.refresh_token);
+          return { status: 'complete' };
         } finally {
           set({ isLoading: false });
         }

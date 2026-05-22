@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import {
+  completeEnrollment,
+  fetchEnrollmentSetup,
+  verifyMfaCode,
+  type MfaSetupPayload,
+} from '../api/mfa';
 import { fetchCaptchaImage } from '../api/captcha';
+import { MfaEnrollmentStep } from '../components/mfa/MfaEnrollmentStep';
+import { MfaVerifyStep } from '../components/mfa/MfaVerifyStep';
 import { useThemeStore } from '../stores/themeStore';
 import { sanitizeCaptchaInput } from '../utils/captchaInput';
 import { getLoginErrorMessage } from '../utils/loginApiErrors';
@@ -69,7 +77,13 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [loginStep, setLoginStep] = useState<'credentials' | 'mfa_verify' | 'mfa_enroll'>('credentials');
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [enrollSetup, setEnrollSetup] = useState<MfaSetupPayload | null>(null);
+  const [mfaLoading, setMfaLoading] = useState(false);
+
   const login = useAuthStore((state) => state.login);
+  const finishAuthTokens = useAuthStore((state) => state.finishAuthTokens);
   const isLoading = useAuthStore((state) => state.isLoading);
   const isAuthenticated = useAuthStore((state) => Boolean(state.accessToken && state.user));
   const theme = useThemeStore((state) => state.theme);
@@ -149,11 +163,73 @@ export default function Login() {
     if (hasLoginErrors(errors)) return;
 
     try {
-      await login(username.trim(), password, captchaId, sanitizeCaptchaInput(captchaCode));
+      const result = await login(username.trim(), password, captchaId, sanitizeCaptchaInput(captchaCode));
+      if (result.status === 'mfa_verify') {
+        setMfaToken(result.mfaToken);
+        setLoginStep('mfa_verify');
+        setError(null);
+        return;
+      }
+      if (result.status === 'mfa_enroll') {
+        setMfaToken(result.mfaToken);
+        setLoginStep('mfa_enroll');
+        setMfaLoading(true);
+        try {
+          const res = await fetchEnrollmentSetup(result.mfaToken);
+          setEnrollSetup(res.data);
+          setError(null);
+        } catch (err: unknown) {
+          setError(getLoginErrorMessage(err));
+          setLoginStep('credentials');
+        } finally {
+          setMfaLoading(false);
+        }
+        return;
+      }
     } catch (err: unknown) {
       setError(getLoginErrorMessage(err));
-      await fetchCaptcha();
+      await fetchCaptcha({ clearError: false });
     }
+  };
+
+  const handleMfaVerify = async (code: string) => {
+    if (!mfaToken) return;
+    setMfaLoading(true);
+    setError(null);
+    try {
+      const res = await verifyMfaCode(mfaToken, code);
+      const data = res.data;
+      if (!data.access_token || !data.refresh_token) throw new Error('Invalid MFA response.');
+      await finishAuthTokens(data.access_token, data.refresh_token);
+    } catch (err: unknown) {
+      setError(getLoginErrorMessage(err));
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaEnrollComplete = async (code: string) => {
+    if (!mfaToken) return;
+    setMfaLoading(true);
+    setError(null);
+    try {
+      const res = await completeEnrollment(mfaToken, code);
+      const data = res.data;
+      if (!data.access_token || !data.refresh_token) throw new Error('Invalid MFA response.');
+      await finishAuthTokens(data.access_token, data.refresh_token);
+    } catch (err: unknown) {
+      setError(getLoginErrorMessage(err));
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const backToCredentials = () => {
+    setLoginStep('credentials');
+    setMfaToken(null);
+    setEnrollSetup(null);
+    setError(null);
+    void fetchCaptcha({ clearError: true });
   };
 
   return (
@@ -196,7 +272,9 @@ export default function Login() {
           </button>
         </div>
 
-        <div className="w-full max-w-[380px] mx-auto">
+        <div className="w-full max-w-[420px] mx-auto">
+          {loginStep === 'credentials' ? (
+            <>
           <div className="flex flex-col items-center text-center mb-10">
             <IipLogo size="lg" whiteBackground className="mb-5" />
             <h1 className="text-xl font-bold text-iip-text tracking-tight">IIP</h1>
@@ -362,6 +440,27 @@ export default function Login() {
               )}
             </button>
           </form>
+            </>
+          ) : loginStep === 'mfa_verify' ? (
+            <MfaVerifyStep
+              error={error}
+              isLoading={mfaLoading || isLoading}
+              onVerify={handleMfaVerify}
+              onBack={backToCredentials}
+            />
+          ) : enrollSetup ? (
+            <MfaEnrollmentStep
+              setup={enrollSetup}
+              error={error}
+              isLoading={mfaLoading}
+              onComplete={handleMfaEnrollComplete}
+            />
+          ) : (
+            <div className="text-center py-12 text-sm text-iip-text-muted">
+              <div className="h-8 w-8 border-2 border-iip-primary/30 border-t-iip-primary rounded-full animate-spin mx-auto mb-3" />
+              Preparing authenticator setup…
+            </div>
+          )}
 
           <p className="mt-12 text-center text-[11px] text-iip-text-muted leading-relaxed">
             Developed and Maintained by Kerala Police, CCTNS Division

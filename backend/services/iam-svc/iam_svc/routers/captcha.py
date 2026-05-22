@@ -14,7 +14,9 @@ from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
 from redis.asyncio import Redis
 
-from iam_svc.cache import get_redis
+from typing import Annotated, Optional
+
+from iam_svc.cache import get_redis_optional
 from iam_svc.services.captcha_store import save_captcha
 
 router = APIRouter(tags=["Captcha"])
@@ -98,7 +100,7 @@ def render_elegant_captcha(text: str) -> bytes:
     return buffer.getvalue()
 
 
-async def _generate_captcha_response(redis: Redis | None) -> CaptchaResponse:
+async def _generate_captcha_response(redis: Optional[Redis]) -> CaptchaResponse:
     captcha_text = generate_random_string()
 
     try:
@@ -126,5 +128,7 @@ async def _generate_captcha_response(redis: Redis | None) -> CaptchaResponse:
 
 @router.get("", response_model=CaptchaResponse)
 @router.get("/", response_model=CaptchaResponse, include_in_schema=False)
-async def generate_captcha(redis: Redis = Depends(get_redis)) -> CaptchaResponse:
+async def generate_captcha(
+    redis: Annotated[Optional[Redis], Depends(get_redis_optional)],
+) -> CaptchaResponse:
     return await _generate_captcha_response(redis)

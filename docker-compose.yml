@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ─── Databases ──────────────────────────────────────────────────────────────
   postgres:
@@ -129,6 +127,29 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ─── Keycloak (OIDC — password validation & JWT issuance) ───────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0.6
+    container_name: iip-keycloak
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8080
+      KC_HOSTNAME: localhost
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./infra/keycloak/iip-realm.json:/opt/keycloak/data/import/iip-realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200'"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
 
   # ─── OPA (Policy Engine) ─────────────────────────────────────────────────────
   # Built locally for native arm64 on Apple Silicon (avoids amd64 emulation warning).

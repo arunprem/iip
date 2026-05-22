@@ -7,7 +7,15 @@ import {
   RefreshCw,
   ShieldAlert,
 } from 'lucide-react';
+import {
+  completeEnrollment,
+  fetchEnrollmentSetup,
+  verifyMfaCode,
+  type MfaSetupPayload,
+} from '../api/mfa';
 import { fetchCaptchaImage } from '../api/captcha';
+import { MfaEnrollmentStep } from './mfa/MfaEnrollmentStep';
+import { MfaVerifyStep } from './mfa/MfaVerifyStep';
 import { IipLogo } from './IipLogo';
 import { ProfileAvatar } from './ProfileAvatar';
 import { useAuthStore } from '../stores/authStore';
@@ -29,8 +37,14 @@ export function SessionLockScreen() {
   const profilePhotoRevision = useAuthStore((s) => s.profilePhotoRevision);
   const lockReason = useAuthStore((s) => s.lockReason);
   const unlockSession = useAuthStore((s) => s.unlockSession);
+  const finishAuthTokens = useAuthStore((s) => s.finishAuthTokens);
   const switchAccount = useAuthStore((s) => s.switchAccount);
   const isLoading = useAuthStore((s) => s.isLoading);
+
+  const [unlockStep, setUnlockStep] = useState<'credentials' | 'mfa_verify' | 'mfa_enroll'>('credentials');
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [enrollSetup, setEnrollSetup] = useState<MfaSetupPayload | null>(null);
+  const [mfaLoading, setMfaLoading] = useState(false);
 
   const [password, setPassword] = useState('');
   const [captchaCode, setCaptchaCode] = useState('');
@@ -41,7 +55,7 @@ export function SessionLockScreen() {
   const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
   const [validated, setValidated] = useState(false);
 
-  const fetchCaptcha = useCallback(async () => {
+  const fetchCaptcha = useCallback(async (options?: { clearError?: boolean }) => {
     setCaptchaLoading(true);
     setCaptchaImage('');
     try {
@@ -49,7 +63,9 @@ export function SessionLockScreen() {
       setCaptchaId(data.captcha_id);
       setCaptchaImage(data.image_base64);
       setCaptchaCode('');
-      setError(null);
+      if (options?.clearError) {
+        setError(null);
+      }
     } catch {
       setError('Unable to load security code. Please try again.');
     } finally {
@@ -82,12 +98,65 @@ export function SessionLockScreen() {
     if (Object.keys(errors).length) return;
 
     try {
-      await unlockSession(password, captchaId, sanitizeCaptchaInput(captchaCode));
+      const result = await unlockSession(password, captchaId, sanitizeCaptchaInput(captchaCode));
       setPassword('');
       setCaptchaCode('');
+      if (result.status === 'mfa_verify') {
+        setMfaToken(result.mfaToken);
+        setUnlockStep('mfa_verify');
+        setError(null);
+        return;
+      }
+      if (result.status === 'mfa_enroll') {
+        setMfaToken(result.mfaToken);
+        setUnlockStep('mfa_enroll');
+        setMfaLoading(true);
+        try {
+          const res = await fetchEnrollmentSetup(result.mfaToken);
+          setEnrollSetup(res.data);
+          setError(null);
+        } catch (err: unknown) {
+          setError(getLoginErrorMessage(err));
+          setUnlockStep('credentials');
+        } finally {
+          setMfaLoading(false);
+        }
+      }
     } catch (err: unknown) {
       setError(getLoginErrorMessage(err));
       await fetchCaptcha();
+    }
+  };
+
+  const handleMfaVerify = async (code: string) => {
+    if (!mfaToken) return;
+    setMfaLoading(true);
+    setError(null);
+    try {
+      const res = await verifyMfaCode(mfaToken, code);
+      const data = res.data;
+      if (!data.access_token || !data.refresh_token) throw new Error('Invalid MFA response.');
+      await finishAuthTokens(data.access_token, data.refresh_token);
+    } catch (err: unknown) {
+      setError(getLoginErrorMessage(err));
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaEnrollComplete = async (code: string) => {
+    if (!mfaToken) return;
+    setMfaLoading(true);
+    setError(null);
+    try {
+      const res = await completeEnrollment(mfaToken, code);
+      const data = res.data;
+      if (!data.access_token || !data.refresh_token) throw new Error('Invalid MFA response.');
+      await finishAuthTokens(data.access_token, data.refresh_token);
+    } catch (err: unknown) {
+      setError(getLoginErrorMessage(err));
+    } finally {
+      setMfaLoading(false);
     }
   };
 
@@ -141,6 +210,8 @@ export function SessionLockScreen() {
             </div>
           </div>
 
+          {unlockStep === 'credentials' ? (
+            <>
           {error && (
             <div className="alert-danger mb-5" role="alert">
               <ShieldAlert size={18} className="shrink-0 mt-0.5" />
@@ -202,7 +273,7 @@ export function SessionLockScreen() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => void fetchCaptcha()}
+                  onClick={() => void fetchCaptcha({ clearError: true })}
                   disabled={captchaLoading}
                   className="p-2.5 text-iip-primary hover:bg-iip-primary/10 rounded-lg transition-colors disabled:opacity-40"
                   title="Refresh security code"
@@ -248,7 +319,27 @@ export function SessionLockScreen() {
               <ArrowRight size={18} aria-hidden />
             </button>
           </form>
+            </>
+          ) : unlockStep === 'mfa_verify' ? (
+            <MfaVerifyStep
+              title="Verify authenticator"
+              subtitle="Enter the code from your authenticator app to unlock."
+              error={error}
+              isLoading={mfaLoading || isLoading}
+              onVerify={handleMfaVerify}
+            />
+          ) : enrollSetup ? (
+            <MfaEnrollmentStep
+              setup={enrollSetup}
+              error={error}
+              isLoading={mfaLoading}
+              onComplete={handleMfaEnrollComplete}
+            />
+          ) : (
+            <p className="text-sm text-iip-text-muted text-center py-8">Loading setup…</p>
+          )}
 
+          {unlockStep === 'credentials' && (
           <button
             type="button"
             onClick={handleSwitchAccount}
@@ -258,6 +349,7 @@ export function SessionLockScreen() {
             <LogOut size={16} aria-hidden />
             Sign in with another account
           </button>
+          )}
         </div>
       </div>
     </div>

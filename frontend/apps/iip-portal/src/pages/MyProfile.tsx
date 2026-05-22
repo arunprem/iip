@@ -6,6 +6,7 @@ import { uploadProfilePhoto, type ProfileData } from '../api/profile';
 import { AdminButton } from '../components/admin/AdminButton';
 import { AdminFormField } from '../components/admin/AdminFormField';
 import { AdminPageLayout } from '../components/admin/AdminPageLayout';
+import { MfaSecurityCard } from '../components/profile/MfaSecurityCard';
 import { ProfilePhotoCropModal } from '../components/profile/ProfilePhotoCropModal';
 import { getApiErrorMessage } from '../hooks/useIamRoles';
 import { useAuthStore } from '../stores/authStore';
@@ -245,7 +246,7 @@ export default function MyProfile() {
         isUploading={uploadPhotoMutation.isPending}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,280px)_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,280px)_1fr] items-start">
         <section className="dashboard-card p-6 flex flex-col items-center text-center">
           <h2 className="text-sm font-semibold text-iip-text w-full text-left mb-4">Profile photo</h2>
           <div className="relative mb-4">
@@ -285,7 +286,7 @@ export default function MyProfile() {
           <p className="text-xs text-iip-text-muted">@{profile?.username ?? authUser?.username}</p>
         </section>
 
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0">
           <section className="dashboard-card p-6">
             <h2 className="text-sm font-semibold text-iip-text mb-4">Profile information</h2>
             {isLoading ? (
@@ -425,6 +426,8 @@ export default function MyProfile() {
               </div>
             </form>
           </section>
+
+          <MfaSecurityCard />
         </div>
       </div>
     </AdminPageLayout>

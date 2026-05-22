@@ -3,6 +3,10 @@ import { extractApiDetail, type IipApiErrorPayload } from './apiMessages';
 const CREDENTIALS_FALLBACK = 'Invalid username or password.';
 const GENERIC_FALLBACK = 'Authentication failed. Please check your credentials.';
 
+function isMfaCodeError(field?: string): boolean {
+  return field === 'code';
+}
+
 function isCaptchaError(detail: string, errorCode?: string, field?: string): boolean {
   if (field === 'captcha_code') return true;
   if (errorCode === 'VALIDATION_ERROR') {
@@ -49,6 +53,10 @@ export function getLoginErrorMessage(err: unknown): string {
 
   if (!detail) {
     return status === 401 ? CREDENTIALS_FALLBACK : GENERIC_FALLBACK;
+  }
+
+  if (isMfaCodeError(field)) {
+    return detail || 'Invalid authentication code. Try again.';
   }
 
   if (isCaptchaError(detail, errorCode, field)) {

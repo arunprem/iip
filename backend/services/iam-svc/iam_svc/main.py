@@ -31,6 +31,9 @@ from iip_core.logging import configure_logging, get_logger
 from iip_core.settings import BaseServiceSettings
 
 from .routers import auth as auth_router
+from .routers import mfa as mfa_router
+from .routers import mfa_profile as mfa_profile_router
+from .routers import security as security_router
 from .routers import profile as profile_router
 from .routers import health as health_router
 from .routers import users as users_router
@@ -87,6 +90,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Initialize database connection pool
     init_db(settings)
     logger.info("Database connection pool initialized")
+
+    if settings.keycloak_enabled:
+        logger.info(
+            "keycloak_configured",
+            server_url=settings.keycloak_server_url,
+            realm=settings.keycloak_realm,
+            client_id=settings.keycloak_client_id,
+        )
 
     yield
 
@@ -156,6 +167,9 @@ def create_app() -> FastAPI:
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(health_router.router, tags=["health"])
     app.include_router(auth_router.router, prefix="/api/v1/auth", tags=["authentication"])
+    app.include_router(mfa_router.router, prefix="/api/v1/auth/mfa", tags=["mfa"])
+    app.include_router(mfa_profile_router.router, prefix="/api/v1/auth/me/mfa", tags=["mfa-profile"])
+    app.include_router(security_router.router, prefix="/api/v1/iam/security", tags=["security"])
     app.include_router(profile_router.router, prefix="/api/v1/auth/me", tags=["profile"])
     app.include_router(users_router.router, prefix="/api/v1/iam/users", tags=["users"])
     app.include_router(roles_router.router, prefix="/api/v1/iam/roles", tags=["roles"])

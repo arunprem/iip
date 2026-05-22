@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '../index.css'
 import { AppShell } from '../components/AppShell'
 import { DashboardHeader } from '../components/DashboardHeader'
-import { Sidebar } from '../components/Sidebar'
+import { SidebarDrawer } from '../components/Sidebar'
 import type { UserContext } from '../components/AppShell'
 import { useThemeStore } from '../stores/themeStore'
 import { AuthorizationGate } from '../components/AuthorizationGate'
@@ -34,6 +34,8 @@ const UnitTypeManagement = React.lazy(() => import('../pages/system/UnitTypeMana
 const RankManagement     = React.lazy(() => import('../pages/system/RankManagement'))
 const UserManagement     = React.lazy(() => import('../pages/system/UserManagement'))
 const MyProfile          = React.lazy(() => import('../pages/MyProfile'))
+const SystemConfiguration = React.lazy(() => import('../pages/system/SystemConfiguration'))
+const SecuritySettings   = React.lazy(() => import('../pages/system/SecuritySettings'))
 const UnauthorizedPage   = React.lazy(() => import('../pages/UnauthorizedPage'))
 
 const queryClient = new QueryClient({
@@ -118,12 +120,12 @@ const AuthenticatedLayout = () => {
           <div className="flex gap-3">
             <button
               type="button"
-              className="admin-btn admin-btn-secondary"
+              className="btn btn-secondary"
               onClick={() => void initializeSession()}
             >
               Retry
             </button>
-            <button type="button" className="admin-btn admin-btn-primary" onClick={() => logout()}>
+            <button type="button" className="btn btn-primary" onClick={() => logout()}>
               Sign in again
             </button>
           </div>
@@ -158,7 +160,7 @@ const AuthenticatedLayout = () => {
       systemStatus="ONLINE"
     >
       <div className="flex flex-1 min-h-0 w-full h-full overflow-hidden">
-        <Sidebar user={userContext} className="hidden lg:flex" />
+        <SidebarDrawer user={userContext} />
 
         <div className="flex flex-col flex-1 min-h-0 min-w-0">
           <DashboardHeader user={userContext} />
@@ -237,6 +239,30 @@ const AuthenticatedLayout = () => {
                   element={
                     <SystemAdminRoute>
                       <UserManagement />
+                    </SystemAdminRoute>
+                  }
+                />
+                <Route
+                  path="/system"
+                  element={
+                    <SystemAdminRoute>
+                      <Navigate to="/system/configuration" replace />
+                    </SystemAdminRoute>
+                  }
+                />
+                <Route
+                  path="/system/configuration"
+                  element={
+                    <SystemAdminRoute>
+                      <SystemConfiguration />
+                    </SystemAdminRoute>
+                  }
+                />
+                <Route
+                  path="/system/security"
+                  element={
+                    <SystemAdminRoute>
+                      <SecuritySettings />
                     </SystemAdminRoute>
                   }
                 />

@@ -11,6 +11,11 @@ import {
   Settings,
   KeyRound,
   Menu,
+  Building2,
+  Users,
+  Tags,
+  Award,
+  SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -104,6 +109,13 @@ export const SYSTEM_MANAGEMENT_GROUP: NavGroupConfig = {
   menuKey: 'system-management',
   children: [
     {
+      to: '/system/configuration',
+      label: 'System configuration',
+      icon: SlidersHorizontal,
+      roles: ['SYSTEM_ADMIN', 'IT_ADMIN'],
+      menuKey: 'system-configuration',
+    },
+    {
       to: '/system/roles',
       label: 'Role Management',
       icon: Shield,
@@ -123,6 +135,34 @@ export const SYSTEM_MANAGEMENT_GROUP: NavGroupConfig = {
       icon: Menu,
       roles: ['SYSTEM_ADMIN', 'IT_ADMIN'],
       menuKey: 'menu-management',
+    },
+    {
+      to: '/system/offices',
+      label: 'Office Management',
+      icon: Building2,
+      roles: ['SYSTEM_ADMIN', 'IT_ADMIN'],
+      menuKey: 'office-management',
+    },
+    {
+      to: '/system/unit-types',
+      label: 'Unit Types',
+      icon: Tags,
+      roles: ['SYSTEM_ADMIN', 'IT_ADMIN'],
+      menuKey: 'unit-type-management',
+    },
+    {
+      to: '/system/ranks',
+      label: 'Ranks',
+      icon: Award,
+      roles: ['SYSTEM_ADMIN', 'IT_ADMIN'],
+      menuKey: 'rank-management',
+    },
+    {
+      to: '/system/users',
+      label: 'Users',
+      icon: Users,
+      roles: ['SYSTEM_ADMIN', 'IT_ADMIN'],
+      menuKey: 'user-management',
     },
   ],
 };

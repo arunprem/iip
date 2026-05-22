@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Optional
 
@@ -13,6 +14,19 @@ logger = get_logger(__name__)
 
 _memory: dict[str, tuple[str, float]] = {}
 CAPTCHA_TTL_SECONDS = 180
+_REDIS_OP_TIMEOUT_S = 2.0
+
+
+async def _redis_setex(redis: Redis, key: str, ttl: int, value: str) -> None:
+    await asyncio.wait_for(redis.setex(key, ttl, value), timeout=_REDIS_OP_TIMEOUT_S)
+
+
+async def _redis_get(redis: Redis, key: str) -> Optional[bytes]:
+    return await asyncio.wait_for(redis.get(key), timeout=_REDIS_OP_TIMEOUT_S)
+
+
+async def _redis_delete(redis: Redis, key: str) -> None:
+    await asyncio.wait_for(redis.delete(key), timeout=_REDIS_OP_TIMEOUT_S)
 
 
 def _purge_expired_memory() -> None:
@@ -32,7 +46,7 @@ async def save_captcha(
     key = f"captcha:{captcha_id}"
     if redis is not None:
         try:
-            await redis.setex(key, ttl, captcha_text)
+            await _redis_setex(redis, key, ttl, captcha_text)
             return
         except Exception as exc:
             logger.warning("captcha_redis_save_failed", error=str(exc))
@@ -45,9 +59,9 @@ async def consume_captcha(redis: Redis | None, captcha_id: str) -> Optional[str]
     key = f"captcha:{captcha_id}"
     if redis is not None:
         try:
-            stored = await redis.get(key)
+            stored = await _redis_get(redis, key)
             if stored:
-                await redis.delete(key)
+                await _redis_delete(redis, key)
                 return stored.decode("utf-8")
         except Exception as exc:
             logger.warning("captcha_redis_consume_failed", error=str(exc))
