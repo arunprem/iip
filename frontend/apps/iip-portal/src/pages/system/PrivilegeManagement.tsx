@@ -62,6 +62,23 @@ const emptyMenuPrivilegeForm = {
   module: 'Menu',
 };
 
+const emptyDataPrivilegeForm = {
+  privilege_code: '',
+  name: '',
+  description: '',
+  module: 'Cases',
+  seedDefaultActions: true,
+};
+
+const DATA_MODULE_OPTIONS = [
+  'Cases',
+  'HUMINT',
+  'Analytics',
+  'IAM',
+  'System',
+  'Administration',
+] as const;
+
 interface LinkedMenuRow {
   id: string;
   privilege_id: string | null;
@@ -72,9 +89,14 @@ export default function PrivilegeManagement() {
   const [saved, setSaved] = useState(false);
   const [menuPrivForm, setMenuPrivForm] = useState(emptyMenuPrivilegeForm);
   const [editingMenuPrivId, setEditingMenuPrivId] = useState<string | null>(null);
+  const [dataPrivForm, setDataPrivForm] = useState(emptyDataPrivilegeForm);
+  const [editingDataPrivId, setEditingDataPrivId] = useState<string | null>(null);
   const [moduleFilter, setModuleFilter] = useState('all');
   const [activeFilter, setActiveFilter] = useState('all');
+  const [dataModuleFilter, setDataModuleFilter] = useState('all');
+  const [dataActiveFilter, setDataActiveFilter] = useState('all');
   const menuPrivFormRef = useRef<HTMLDivElement>(null);
+  const dataPrivFormRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const currentOfficeId = useAuthStore((s) => s.currentOfficeId);
 
@@ -99,11 +121,13 @@ export default function PrivilegeManagement() {
     enabled: tab === 'menu',
   });
 
-  const { data: dataPrivs } = useQuery({
+  const { data: dataPrivs, isLoading: dataPrivsLoading } = useQuery({
     queryKey: ['privileges-data', currentOfficeId],
     queryFn: async () => {
-      const res = await apiClient.get<Privilege[]>('/iam/privileges/');
-      return res.data.filter((p) => p.privilege_type === 'DATA');
+      const res = await apiClient.get<Privilege[]>('/iam/privileges/', {
+        params: { privilege_type: 'DATA' },
+      });
+      return res.data;
     },
   });
 
@@ -185,6 +209,33 @@ export default function PrivilegeManagement() {
     setEditingMenuPrivId(null);
   };
 
+  const resetDataPrivForm = () => {
+    setDataPrivForm(emptyDataPrivilegeForm);
+    setEditingDataPrivId(null);
+  };
+
+  const focusDataPrivForm = () => {
+    dataPrivFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.setTimeout(() => {
+      const nameInput = document.getElementById('data-priv-name');
+      if (nameInput instanceof HTMLInputElement) {
+        nameInput.focus({ preventScroll: true });
+      }
+    }, 350);
+  };
+
+  const startEditDataPriv = (priv: Privilege) => {
+    setEditingDataPrivId(priv.id);
+    setDataPrivForm({
+      privilege_code: priv.privilege_code,
+      name: priv.name,
+      description: priv.description,
+      module: priv.module,
+      seedDefaultActions: true,
+    });
+    requestAnimationFrame(() => focusDataPrivForm());
+  };
+
   const focusMenuPrivForm = () => {
     menuPrivFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     window.setTimeout(() => {
@@ -247,12 +298,59 @@ export default function PrivilegeManagement() {
     },
   });
 
+  const createDataPrivilegeMutation = useMutation({
+    mutationFn: async () => {
+      await apiClient.post('/iam/privileges/', {
+        privilege_code: dataPrivForm.privilege_code.trim(),
+        name: dataPrivForm.name.trim(),
+        description: dataPrivForm.description.trim() || dataPrivForm.name.trim(),
+        module: dataPrivForm.module.trim() || 'Cases',
+        privilege_type: 'DATA',
+        seed_default_actions: dataPrivForm.seedDefaultActions,
+      });
+    },
+    onSuccess: async () => {
+      resetDataPrivForm();
+      await queryClient.invalidateQueries({ queryKey: ['privileges-data'] });
+      await queryClient.invalidateQueries({ queryKey: ['matrix-data'] });
+      showToast('success', 'Data privilege created.');
+    },
+  });
+
+  const updateDataPrivilegeMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingDataPrivId) return;
+      await apiClient.patch(`/iam/privileges/${editingDataPrivId}`, {
+        name: dataPrivForm.name.trim(),
+        description: dataPrivForm.description.trim() || dataPrivForm.name.trim(),
+        module: dataPrivForm.module.trim() || 'Cases',
+      });
+    },
+    onSuccess: async () => {
+      resetDataPrivForm();
+      await queryClient.invalidateQueries({ queryKey: ['privileges-data'] });
+      showToast('success', 'Data privilege updated.');
+    },
+  });
+
+  const toggleDataPrivActiveMutation = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      await apiClient.patch(`/iam/privileges/${id}`, { is_active });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['privileges-data'] });
+      await queryClient.invalidateQueries({ queryKey: ['matrix-data'] });
+      void useAuthStore.getState().fetchPermissions();
+    },
+  });
+
   const deletePrivilegeMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiClient.delete(`/iam/privileges/${id}`);
     },
     onSuccess: async (_data, deletedId) => {
       if (editingMenuPrivId === deletedId) resetMenuPrivForm();
+      if (editingDataPrivId === deletedId) resetDataPrivForm();
       if (newAction.privilegeId === deletedId) {
         setNewAction({ privilegeId: '', code: '', label: '' });
       }
@@ -388,13 +486,41 @@ export default function PrivilegeManagement() {
   const menuFormPending =
     createMenuPrivilegeMutation.isPending || updateMenuPrivilegeMutation.isPending;
 
+  const isEditingDataPriv = Boolean(editingDataPrivId);
+  const canSaveDataPriv = dataPrivForm.name.trim().length > 0;
+  const canCreateDataPriv =
+    !isEditingDataPriv &&
+    dataPrivForm.privilege_code.trim().length > 0 &&
+    dataPrivForm.name.trim().length > 0;
+  const dataFormPending =
+    createDataPrivilegeMutation.isPending || updateDataPrivilegeMutation.isPending;
+
+  const dataPrivList = dataPrivs ?? [];
+
+  const dataModuleOptions = useMemo(() => {
+    const modules = [...new Set(dataPrivList.map((p) => p.module))].sort();
+    return [
+      { value: 'all', label: 'All modules' },
+      ...modules.map((m) => ({ value: m, label: m })),
+    ];
+  }, [dataPrivList]);
+
+  const filteredDataPrivs = useMemo(() => {
+    return dataPrivList.filter((p) => {
+      if (dataModuleFilter !== 'all' && p.module !== dataModuleFilter) return false;
+      if (dataActiveFilter === 'active' && !p.is_active) return false;
+      if (dataActiveFilter === 'inactive' && p.is_active) return false;
+      return true;
+    });
+  }, [dataPrivList, dataModuleFilter, dataActiveFilter]);
+
   const hasUnsavedDataChanges = Object.keys(dataDraft).length > 0;
-  const dataPrivsWithActions = (dataPrivs ?? []).filter((p) => p.actions.length > 0);
+  const dataPrivsWithActions = dataPrivList.filter((p) => p.actions.length > 0);
 
   return (
     <AdminPageLayout
       title="Privilege Management"
-      description="Define MENU privileges here, link them to menus in Menu Management, and configure data actions per role."
+      description="Create MENU and DATA privileges for new modules. Link menus in Menu Management, then assign data actions per role."
       icon={KeyRound}
     >
       <AdminTabBar
@@ -736,25 +862,244 @@ export default function PrivilegeManagement() {
       {tab === 'data' && (
         <div className="space-y-6 mt-6 pb-24">
           <AdminTipBanner>
-            <strong>Delete action</strong> removes a custom action entirely. To only revoke access for
-            some roles, uncheck boxes in the matrix, then use the{' '}
-            <strong>floating Save button</strong> (bottom-right).
+            When you add a new module, create matching privileges: <strong>menu:…</strong> in the Menu
+            tab (for navigation) and <strong>data:…</strong> here (for Read/Create/Update actions).
+            Use the same slug for both (e.g. <code className="font-mono text-xs">menu:reports</code> and{' '}
+            <code className="font-mono text-xs">data:reports</code>). Grant roles in the matrix below,
+            then save with the floating button.
           </AdminTipBanner>
+
+          <div className="dashboard-card mb-4 overflow-hidden">
+            <div ref={dataPrivFormRef} className="admin-form-panel scroll-mt-4" tabIndex={-1}>
+              <div className="admin-form-panel-header">
+                <p className="text-sm font-semibold text-iip-text">
+                  {isEditingDataPriv ? 'Edit DATA privilege' : 'New DATA privilege'}
+                </p>
+                <p className="text-xs text-iip-text-muted mt-1 max-w-3xl leading-relaxed">
+                  {isEditingDataPriv ? (
+                    <>
+                      Update the display name, description, or module. The privilege code cannot be
+                      changed after creation. Add or remove actions in step 3 below.
+                    </>
+                  ) : (
+                    <>
+                      Create a data privilege for a new module, then add custom actions (step 3) and
+                      assign them to roles in the matrix (step 4). Pair with a{' '}
+                      <span className="font-medium text-iip-text">MENU</span> privilege for the same
+                      feature.
+                    </>
+                  )}
+                </p>
+              </div>
+
+              <div className="admin-form-panel-body space-y-5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  <AdminFormField
+                    id="data-priv-code"
+                    label="Privilege code"
+                    required={!isEditingDataPriv}
+                    hint={
+                      isEditingDataPriv
+                        ? 'Immutable after creation.'
+                        : 'Use the "data:" prefix, e.g. data:cases — match your menu slug.'
+                    }
+                  >
+                    {isEditingDataPriv ? (
+                      <input
+                        id="data-priv-code"
+                        className="form-control font-mono text-sm bg-iip-surface-hover cursor-not-allowed"
+                        value={dataPrivForm.privilege_code}
+                        readOnly
+                        disabled
+                      />
+                    ) : (
+                      <div className="flex rounded-lg border border-iip-border bg-iip-bg overflow-hidden focus-within:ring-2 focus-within:ring-iip-primary/25 focus-within:border-iip-primary">
+                        <span className="inline-flex items-center px-3 text-xs font-mono text-iip-text-muted bg-iip-surface border-r border-iip-border shrink-0">
+                          data:
+                        </span>
+                        <input
+                          id="data-priv-code"
+                          className="flex-1 min-h-[2.75rem] px-3 py-2.5 text-sm font-mono bg-transparent border-0 text-iip-text placeholder:text-iip-text-muted/70 focus:outline-none focus:ring-0"
+                          placeholder="cases"
+                          value={dataPrivForm.privilege_code.replace(/^data:/i, '')}
+                          onChange={(e) => {
+                            const slug = e.target.value
+                              .trim()
+                              .toLowerCase()
+                              .replace(/\s+/g, '-')
+                              .replace(/[^a-z0-9-_]/g, '');
+                            setDataPrivForm((s) => ({
+                              ...s,
+                              privilege_code: slug ? `data:${slug}` : '',
+                            }));
+                          }}
+                          autoComplete="off"
+                        />
+                      </div>
+                    )}
+                  </AdminFormField>
+
+                  <AdminFormField
+                    id="data-priv-name"
+                    label="Display name"
+                    required
+                    hint="Shown in admin screens and the role matrix."
+                  >
+                    <input
+                      id="data-priv-name"
+                      className="form-control"
+                      placeholder="Intelligence Cases"
+                      value={dataPrivForm.name}
+                      onChange={(e) => setDataPrivForm((s) => ({ ...s, name: e.target.value }))}
+                    />
+                  </AdminFormField>
+                </div>
+
+                <AdminFormField
+                  id="data-priv-desc"
+                  label="Description"
+                  hint="What data this privilege protects (API / records / operations)."
+                >
+                  <textarea
+                    id="data-priv-desc"
+                    className="form-control"
+                    rows={3}
+                    placeholder="Permissions for intelligence case records."
+                    value={dataPrivForm.description}
+                    onChange={(e) =>
+                      setDataPrivForm((s) => ({ ...s, description: e.target.value }))
+                    }
+                  />
+                </AdminFormField>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  <AdminFormField id="data-priv-module" label="Module" hint="Grouping for filters and reporting.">
+                    <select
+                      id="data-priv-module"
+                      className="form-control"
+                      value={dataPrivForm.module}
+                      onChange={(e) => setDataPrivForm((s) => ({ ...s, module: e.target.value }))}
+                    >
+                      {DATA_MODULE_OPTIONS.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                      {!DATA_MODULE_OPTIONS.includes(
+                        dataPrivForm.module as (typeof DATA_MODULE_OPTIONS)[number]
+                      ) && dataPrivForm.module ? (
+                        <option value={dataPrivForm.module}>{dataPrivForm.module}</option>
+                      ) : null}
+                    </select>
+                  </AdminFormField>
+
+                  {!isEditingDataPriv && (
+                    <label className="lg:col-span-2 flex items-start gap-3 rounded-lg border border-iip-border bg-iip-bg/50 px-4 py-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4"
+                        checked={dataPrivForm.seedDefaultActions}
+                        onChange={(e) =>
+                          setDataPrivForm((s) => ({
+                            ...s,
+                            seedDefaultActions: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span className="text-sm text-iip-text">
+                        <span className="font-medium">Seed default actions</span>
+                        <span className="block text-xs text-iip-text-muted mt-0.5">
+                          Creates Read, Create, Update, Delete, and Export for the role matrix.
+                        </span>
+                      </span>
+                    </label>
+                  )}
+
+                  <div className={isEditingDataPriv ? 'lg:col-span-2' : 'lg:col-span-3'}>
+                    <div className="w-full rounded-lg border border-dashed border-iip-border bg-iip-surface/50 px-4 py-3">
+                      <p className="text-xs font-medium text-iip-text-muted uppercase tracking-wide">
+                        Preview
+                      </p>
+                      <p className="mt-1 text-sm font-mono text-iip-primary truncate">
+                        {dataPrivForm.privilege_code || 'data:your-module'}
+                      </p>
+                      <p className="text-sm text-iip-text truncate">
+                        {dataPrivForm.name || 'Display name'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="admin-form-panel-footer">
+                <AdminButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetDataPrivForm}
+                  disabled={dataFormPending}
+                >
+                  {isEditingDataPriv ? <X size={15} aria-hidden /> : null}
+                  {isEditingDataPriv ? 'Cancel' : 'Clear'}
+                </AdminButton>
+                <span className="admin-form-actions-spacer flex-1" aria-hidden />
+                <AdminButton
+                  variant="primary"
+                  size="sm"
+                  onClick={() =>
+                    isEditingDataPriv
+                      ? updateDataPrivilegeMutation.mutate()
+                      : createDataPrivilegeMutation.mutate()
+                  }
+                  disabled={
+                    dataFormPending || (isEditingDataPriv ? !canSaveDataPriv : !canCreateDataPriv)
+                  }
+                >
+                  {isEditingDataPriv ? <Save size={15} aria-hidden /> : <Plus size={15} aria-hidden />}
+                  {dataFormPending
+                    ? 'Saving…'
+                    : isEditingDataPriv
+                      ? 'Save changes'
+                      : 'Create data privilege'}
+                </AdminButton>
+              </div>
+            </div>
+          </div>
 
           <AdminSectionCard
             step={1}
             title="Data privilege registry"
-            description="Overview of all DATA privileges. Remove duplicates or unused privileges here."
+            description="All DATA privileges — search, edit, or remove. Click Edit to load into the form above."
           >
             <AdminInteractiveDataTable
-              data={dataPrivs ?? []}
+              isLoading={dataPrivsLoading}
+              data={filteredDataPrivs}
               keyField={(p) => p.id}
               searchPlaceholder="Search by code, name, description…"
               defaultSort={{ key: 'code', direction: 'asc' }}
               getSearchText={(p) =>
                 [p.privilege_code, p.name, p.description, p.module].join(' ')
               }
-              emptyMessage="No DATA privileges defined."
+              filters={[
+                {
+                  id: 'module',
+                  label: 'Module',
+                  value: dataModuleFilter,
+                  onChange: setDataModuleFilter,
+                  options: dataModuleOptions,
+                },
+                {
+                  id: 'active',
+                  label: 'Status',
+                  value: dataActiveFilter,
+                  onChange: setDataActiveFilter,
+                  options: [
+                    { value: 'all', label: 'All' },
+                    { value: 'active', label: 'Active only' },
+                    { value: 'inactive', label: 'Inactive only' },
+                  ],
+                },
+              ]}
+              emptyMessage="No DATA privileges defined. Create one above."
               columns={[
                 {
                   key: 'code',
@@ -785,7 +1130,7 @@ export default function PrivilegeManagement() {
                 },
                 {
                   key: 'actions',
-                  header: 'Custom actions',
+                  header: 'Actions',
                   className: 'text-center tabular-nums',
                   sortable: true,
                   sortValue: (p) => p.actions.length,
@@ -811,20 +1156,51 @@ export default function PrivilegeManagement() {
                   ),
                 },
                 {
+                  key: 'active',
+                  header: 'Active',
+                  className: 'text-center',
+                  sortable: true,
+                  sortValue: (p) => p.is_active,
+                  render: (p) => (
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={p.is_active}
+                      disabled={toggleDataPrivActiveMutation.isPending}
+                      onChange={() =>
+                        toggleDataPrivActiveMutation.mutate({
+                          id: p.id,
+                          is_active: !p.is_active,
+                        })
+                      }
+                    />
+                  ),
+                },
+                {
                   key: 'row-actions',
                   header: '',
-                  className: 'text-right w-[100px]',
+                  className: 'text-right w-[140px]',
                   render: (p) => (
-                    <AdminButton
-                      variant="danger"
-                      size="xs"
-                      onClick={() => handleDeletePrivilege(p)}
-                      disabled={deletePrivilegeMutation.isPending}
-                      title="Delete data privilege"
-                    >
-                      <Trash2 size={14} aria-hidden />
-                      Delete
-                    </AdminButton>
+                    <div className="inline-flex items-center justify-end gap-1.5">
+                      <AdminButton
+                        variant={editingDataPrivId === p.id ? 'active' : 'ghost'}
+                        size="xs"
+                        onClick={() => startEditDataPriv(p)}
+                      >
+                        <Pencil size={14} aria-hidden />
+                        Edit
+                      </AdminButton>
+                      <AdminButton
+                        variant="danger"
+                        size="xs"
+                        onClick={() => handleDeletePrivilege(p)}
+                        disabled={deletePrivilegeMutation.isPending}
+                        title="Delete data privilege"
+                      >
+                        <Trash2 size={14} aria-hidden />
+                        Delete
+                      </AdminButton>
+                    </div>
                   ),
                 },
               ]}
@@ -896,7 +1272,7 @@ export default function PrivilegeManagement() {
           </AdminSectionCard>
 
           <AdminSectionCard
-            step={3}
+            step={4}
             title="Role access matrix"
             description="Grant or revoke each custom action per role. Remember to save when you change checkboxes."
           >

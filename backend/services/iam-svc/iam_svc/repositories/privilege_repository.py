@@ -13,6 +13,15 @@ from iam_svc.models.privilege_action import PrivilegeAction
 from iam_svc.models.role import Role
 
 
+DEFAULT_DATA_ACTIONS: list[tuple[str, str, int]] = [
+    ("READ", "Read", 1),
+    ("CREATE", "Create", 2),
+    ("UPDATE", "Update", 3),
+    ("DELETE", "Delete", 4),
+    ("EXPORT", "Export", 5),
+]
+
+
 class PrivilegeRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -60,6 +69,19 @@ class PrivilegeRepository:
     async def update(self, privilege: Privilege) -> Privilege:
         await self.session.flush()
         return await self.get_by_id_or_error(privilege.id)
+
+    async def seed_default_data_actions(self, privilege_id: uuid.UUID) -> None:
+        """Create standard CRUD (+ export) actions for a new DATA privilege."""
+        for code, label, sort_order in DEFAULT_DATA_ACTIONS:
+            self.session.add(
+                PrivilegeAction(
+                    privilege_id=privilege_id,
+                    action_code=code,
+                    action_label=label,
+                    sort_order=sort_order,
+                )
+            )
+        await self.session.flush()
 
     async def create_action(self, action: PrivilegeAction) -> PrivilegeAction:
         self.session.add(action)

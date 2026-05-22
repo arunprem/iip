@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 
 from iip_core.db import AsyncSession, get_db
+from iip_core.errors import ErrorCode, IIPException
 from iam_svc.dependencies import require_system_admin_role
 from iam_svc.models.privilege import Privilege
 from iam_svc.models.privilege_action import PrivilegeAction
@@ -44,6 +45,8 @@ class CreatePrivilegeRequest(BaseModel):
     description: str
     module: str
     privilege_type: str = Field(pattern="^(MENU|DATA)$")
+    """When true and privilege_type is DATA, creates READ/CREATE/UPDATE/DELETE/EXPORT actions."""
+    seed_default_actions: bool = True
 
 
 class UpdatePrivilegeRequest(BaseModel):
@@ -110,14 +113,25 @@ async def create_privilege(
     _: Annotated[Role, Depends(require_system_admin_role)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> PrivilegeResponse:
+    repo = PrivilegeRepository(db)
+    existing = await repo.get_by_code(payload.privilege_code.strip())
+    if existing:
+        raise IIPException(
+            ErrorCode.CONFLICT,
+            f"Privilege code '{payload.privilege_code}' already exists.",
+        )
+
     priv = Privilege(
-        privilege_code=payload.privilege_code,
-        name=payload.name,
-        description=payload.description,
-        module=payload.module,
+        privilege_code=payload.privilege_code.strip(),
+        name=payload.name.strip(),
+        description=(payload.description or payload.name).strip(),
+        module=payload.module.strip(),
         privilege_type=payload.privilege_type,
     )
-    created = await PrivilegeRepository(db).create(priv)
+    created = await repo.create(priv)
+    if payload.privilege_type == "DATA" and payload.seed_default_actions:
+        await repo.seed_default_data_actions(created.id)
+        created = await repo.get_by_id_or_error(created.id)
     return _priv_to_response(created)
 
 

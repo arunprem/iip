@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+import { confirmRemoveUserOfficeAssignment } from '../../utils/confirmDialog';
 import { AdminButton } from './AdminButton';
 import { OfficeSearchPicker, type OfficeSearchOption } from './OfficeSearchPicker';
 
@@ -66,8 +67,23 @@ export function UserOfficeAssignmentsEditor({
     onChange(assignments.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   };
 
-  const removeRow = (key: string) => {
-    onChange(assignments.filter((row) => row.key !== key));
+  const removeRow = async (key: string) => {
+    const row = assignments.find((r) => r.key === key);
+    if (!row) return;
+
+    const office = row.office_id ? officeById.get(row.office_id) : undefined;
+    const role = roles.find((r) => r.role_id === row.role_id);
+    const isEmpty = !row.office_id && !row.role_id;
+
+    const confirmed = await confirmRemoveUserOfficeAssignment({
+      officeName: office?.office_name ?? (row.office_id ? 'Selected office' : 'Unassigned row'),
+      officeCode: office?.office_code,
+      roleName: role?.role_name,
+      isEmpty,
+    });
+    if (!confirmed) return;
+
+    onChange(assignments.filter((r) => r.key !== key));
   };
 
   const addRow = () => {
@@ -143,7 +159,7 @@ export function UserOfficeAssignmentsEditor({
                     variant="ghost"
                     size="xs"
                     type="button"
-                    onClick={() => removeRow(row.key)}
+                    onClick={() => void removeRow(row.key)}
                     disabled={disabled}
                     aria-label={`Remove assignment ${index + 1}`}
                   >

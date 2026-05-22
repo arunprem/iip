@@ -149,6 +149,149 @@
     @apply bg-iip-surface rounded-2xl border border-iip-border shadow-sm;
   }
 
+  /* Analyst Workbench — rendered LLM / report content */
+  .workbench-prose {
+    @apply text-sm leading-relaxed text-iip-text max-w-none space-y-3;
+  }
+
+  .workbench-prose > *:first-child {
+    @apply mt-0;
+  }
+
+  .workbench-prose > *:last-child {
+    @apply mb-0;
+  }
+
+  .workbench-doc-title {
+    @apply text-base font-bold text-iip-text pb-2 mb-1 border-b border-iip-border;
+  }
+
+  .workbench-classification {
+    @apply flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-wide;
+  }
+
+  .workbench-classification-label {
+    @apply text-iip-text-muted font-medium normal-case tracking-normal;
+  }
+
+  .workbench-classification-value {
+    @apply font-bold;
+  }
+
+  .workbench-classification--confidential {
+    @apply border-amber-500/40 bg-amber-500/10 text-amber-800;
+  }
+
+  :root.dark .workbench-classification--confidential {
+    @apply text-amber-300;
+  }
+
+  .workbench-classification--secret {
+    @apply border-red-500/40 bg-red-500/10 text-red-800;
+  }
+
+  :root.dark .workbench-classification--secret {
+    @apply text-red-300;
+  }
+
+  .workbench-classification--restricted {
+    @apply border-blue-500/40 bg-blue-500/10 text-blue-800;
+  }
+
+  :root.dark .workbench-classification--restricted {
+    @apply text-blue-300;
+  }
+
+  .workbench-classification--default {
+    @apply border-iip-border bg-iip-bg text-iip-text-muted;
+  }
+
+  .workbench-section-heading {
+    @apply text-sm font-bold text-iip-primary mt-4 mb-2 pt-3 border-t border-iip-border/80 first:mt-0 first:pt-0 first:border-t-0;
+  }
+
+  .workbench-paragraph {
+    @apply text-sm text-iip-text-muted leading-relaxed my-1;
+  }
+
+  .workbench-kv-row {
+    @apply grid grid-cols-1 sm:grid-cols-[minmax(7rem,10rem)_1fr] gap-1 sm:gap-3 py-1.5 px-2 rounded-lg bg-iip-bg/50 border border-transparent;
+  }
+
+  .workbench-kv-row--nested {
+    @apply grid-cols-1 sm:grid-cols-[minmax(5.5rem,8rem)_1fr] px-0 py-0 bg-transparent;
+  }
+
+  .workbench-kv-label {
+    @apply text-xs font-semibold uppercase tracking-wide text-iip-primary shrink-0;
+  }
+
+  .workbench-kv-value {
+    @apply text-sm text-iip-text leading-relaxed;
+  }
+
+  .workbench-ordered-list {
+    @apply my-2 space-y-2 list-none pl-0;
+    counter-reset: none;
+  }
+
+  .workbench-ordered-item {
+    @apply flex gap-3 rounded-lg border border-iip-border bg-iip-surface/60 px-3 py-2.5;
+  }
+
+  .workbench-ordered-num {
+    @apply flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-iip-primary/15 text-xs font-bold text-iip-primary;
+  }
+
+  .workbench-ordered-body {
+    @apply min-w-0 flex-1;
+  }
+
+  .workbench-bullet-list {
+    @apply my-2 pl-1 space-y-1.5 list-none;
+  }
+
+  .workbench-bullet-item {
+    @apply relative pl-5 text-sm text-iip-text before:content-[''] before:absolute before:left-1 before:top-[0.55em] before:h-1.5 before:w-1.5 before:rounded-full before:bg-iip-primary/70;
+  }
+
+  .workbench-prose strong {
+    @apply font-semibold text-iip-text;
+  }
+
+  .workbench-inline-code {
+    @apply font-mono text-[0.85em] px-1.5 py-0.5 rounded bg-iip-bg border border-iip-border text-iip-primary;
+  }
+
+  .workbench-code-block {
+    @apply my-3 p-3 rounded-lg bg-iip-bg border border-iip-border overflow-x-auto text-xs font-mono leading-relaxed;
+  }
+
+  .workbench-code-block code {
+    @apply bg-transparent border-0 p-0 text-inherit;
+  }
+
+  .workbench-table-wrap {
+    @apply my-3 overflow-x-auto rounded-lg border border-iip-border;
+  }
+
+  .workbench-table-wrap table {
+    @apply w-full text-xs border-collapse;
+  }
+
+  .workbench-table-wrap th {
+    @apply bg-iip-bg font-semibold text-left px-3 py-2 border-b border-iip-border;
+  }
+
+  .workbench-table-wrap td {
+    @apply px-3 py-2 border-b border-iip-border/60 align-top;
+  }
+
+  .workbench-prose--streaming > *:last-child::after {
+    content: '';
+    @apply inline-block w-1.5 h-4 ml-0.5 align-middle bg-iip-primary/70 animate-pulse rounded-sm;
+  }
+
   .admin-tab-bar {
     @apply inline-flex flex-wrap gap-1 p-1.5 rounded-xl bg-iip-surface border border-iip-border shadow-sm;
   }

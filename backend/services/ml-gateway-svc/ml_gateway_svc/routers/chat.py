@@ -11,6 +11,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import json
 from typing import Annotated, AsyncIterator
 
 from fastapi import APIRouter, Depends
@@ -91,8 +92,12 @@ async def stream_chat_completion(
 
     Returns a text/event-stream response for use in the Analyst Workbench UI.
     """
-    system_prompt = INTELLIGENCE_ANALYST_SYSTEM_PROMPT.format(
-        classification_level=current_user.clearance_level.value,
+    system_prompt = (
+        REPORT_DRAFTING_SYSTEM_PROMPT
+        if payload.mode == "report_draft"
+        else INTELLIGENCE_ANALYST_SYSTEM_PROMPT.format(
+            classification_level=current_user.clearance_level.value,
+        )
     )
 
     logger.info(
@@ -106,7 +111,8 @@ async def stream_chat_completion(
             messages=payload.messages,
             system_prompt=system_prompt,
         ):
-            yield f"data: {token}\n\n"
+            # JSON-encode chunks so newlines and special chars do not break SSE framing.
+            yield f"data: {json.dumps(token)}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(

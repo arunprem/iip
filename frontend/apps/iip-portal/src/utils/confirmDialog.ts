@@ -277,6 +277,45 @@ export async function showReferenceDeleteBlocked(
   });
 }
 
+export async function confirmRemoveUserOfficeAssignment(details: {
+  officeName: string;
+  officeCode?: string;
+  roleName?: string;
+  isEmpty?: boolean;
+}): Promise<boolean> {
+  const html = details.isEmpty
+    ? '<p>Remove this empty office assignment row?</p>'
+    : (() => {
+        const officeLabel = details.officeCode
+          ? `<strong>${escapeHtml(details.officeName)}</strong> (<code>${escapeHtml(details.officeCode)}</code>)`
+          : `<strong>${escapeHtml(details.officeName)}</strong>`;
+        const roleNote = details.roleName
+          ? `<p class="mt-2">Role: <strong>${escapeHtml(details.roleName)}</strong></p>`
+          : '';
+        return `
+          <p>Remove office access for ${officeLabel}?</p>
+          ${roleNote}
+          <p class="mt-2 text-iip-text-muted">Save the user form to apply this change on the server.</p>
+        `;
+      })();
+
+  const result = await Swal.fire({
+    ...swalBase,
+    title: 'Remove office assignment?',
+    html,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, remove',
+    cancelButtonText: 'Cancel',
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#64748b',
+    focusCancel: true,
+    reverseButtons: true,
+  });
+
+  return result.isConfirmed;
+}
+
 export async function showPrivilegeDeleteBlocked(blockers: string[]): Promise<void> {
   const items = blockers
     .map((b) => `<li class="text-left">${escapeHtml(b)}</li>`)
