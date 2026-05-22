@@ -13,6 +13,7 @@ import { selectCurrentOfficeRole, selectHasLockedSession, useAuthStore } from '.
 import { useAuthHydrated } from '../hooks/useAuthHydrated'
 import { useSessionLock } from '../hooks/useSessionLock'
 import { SessionLockScreen } from '../components/SessionLockScreen'
+import { NotificationSocketBridge } from '../components/NotificationSocketBridge'
 import { ToastContainer } from '../components/ToastContainer'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import Login from '../pages/Login'
@@ -34,6 +35,7 @@ const UnitTypeManagement = React.lazy(() => import('../pages/system/UnitTypeMana
 const RankManagement     = React.lazy(() => import('../pages/system/RankManagement'))
 const UserManagement     = React.lazy(() => import('../pages/system/UserManagement'))
 const MyProfile          = React.lazy(() => import('../pages/MyProfile'))
+const Notifications      = React.lazy(() => import('../pages/Notifications'))
 const SystemConfiguration = React.lazy(() => import('../pages/system/SystemConfiguration'))
 const SecuritySettings   = React.lazy(() => import('../pages/system/SecuritySettings'))
 const UnauthorizedPage   = React.lazy(() => import('../pages/UnauthorizedPage'))
@@ -159,6 +161,7 @@ const AuthenticatedLayout = () => {
       user={userContext}
       systemStatus="ONLINE"
     >
+      <NotificationSocketBridge />
       <div className="flex flex-1 min-h-0 w-full h-full overflow-hidden">
         <SidebarDrawer user={userContext} />
 
@@ -179,6 +182,8 @@ const AuthenticatedLayout = () => {
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<DirectorDashboard />} />
                 <Route path="/profile" element={<MyProfile />} />
+                <Route path="/notifications" element={<Notifications />} />
+                <Route path="/notifications/:id" element={<Notifications />} />
                 <Route path="/watch-console" element={<WatchConsole />} />
                 <Route path="/cases/:id?" element={<CaseFile />} />
                 <Route path="/analyst-workbench" element={<AnalystWorkbench />} />

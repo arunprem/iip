@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { UserContext } from './AppShell';
 import { useAuthStore } from '../stores/authStore';
+import { useNotificationStore, type AppNotification } from '../stores/notificationStore';
 import { useSidebarStore } from '../stores/sidebarStore';
 import { useThemeStore } from '../stores/themeStore';
 import { OfficeSelector } from './OfficeSelector';
@@ -23,50 +24,6 @@ import { ProfileAvatar } from './ProfileAvatar';
 interface DashboardHeaderProps {
   user: UserContext;
 }
-
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  time: string;
-  unread: boolean;
-  type: 'alert' | 'info' | 'success';
-}
-
-const INITIAL_NOTIFICATIONS: Notification[] = [
-  {
-    id: '1',
-    title: 'Critical alert escalated',
-    message: 'Cross-border alert chain requires supervisor review.',
-    time: '2 min ago',
-    unread: true,
-    type: 'alert',
-  },
-  {
-    id: '2',
-    title: 'New case assigned',
-    message: 'Operation Coastal Watch has been assigned to your unit.',
-    time: '45 min ago',
-    unread: true,
-    type: 'info',
-  },
-  {
-    id: '3',
-    title: 'Report approved',
-    message: 'District Intel Brief #442 was signed off by command.',
-    time: '3 hours ago',
-    unread: true,
-    type: 'success',
-  },
-  {
-    id: '4',
-    title: 'System maintenance',
-    message: 'Scheduled maintenance window tonight 02:00–04:00 IST.',
-    time: 'Yesterday',
-    unread: false,
-    type: 'info',
-  },
-];
 
 function useClickOutside(
   ref: React.RefObject<HTMLElement | null>,
@@ -103,7 +60,7 @@ function dropdownPanelClass(open: boolean) {
   }`;
 }
 
-const typeStyles: Record<Notification['type'], string> = {
+const typeStyles: Record<AppNotification['type'], string> = {
   alert: 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400',
   info: 'bg-blue-100 text-blue-600 dark:bg-iip-primary/20 dark:text-iip-primary',
   success: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400',
@@ -124,7 +81,15 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const notifications = useNotificationStore((s) => s.items);
+  const markRead = useNotificationStore((s) => s.markRead);
+  const markAllRead = useNotificationStore((s) => s.markAllRead);
+
+  const openNotification = (id: string) => {
+    void markRead(id);
+    closeAll();
+    navigate(`/notifications/${id}`);
+  };
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -147,10 +112,6 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
   const toggleProfile = () => {
     setProfileOpen((prev) => !prev);
     setNotificationsOpen(false);
-  };
-
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
   };
 
   const handleLogout = () => {
@@ -283,13 +244,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                   <li key={item.id}>
                     <button
                       type="button"
-                      onClick={() =>
-                        setNotifications((prev) =>
-                          prev.map((n) =>
-                            n.id === item.id ? { ...n, unread: false } : n
-                          )
-                        )
-                      }
+                      onClick={() => openNotification(item.id)}
                       className={`w-full text-left px-4 py-3 hover:bg-iip-surface-hover transition-colors ${
                         item.unread ? 'bg-iip-primary/5' : ''
                       }`}
@@ -324,6 +279,10 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
             <div className="border-t border-iip-border px-4 py-2.5">
               <button
                 type="button"
+                onClick={() => {
+                  closeAll();
+                  navigate('/notifications');
+                }}
                 className="w-full text-center text-xs font-medium text-iip-primary hover:text-iip-primary-hover py-1"
               >
                 View all notifications

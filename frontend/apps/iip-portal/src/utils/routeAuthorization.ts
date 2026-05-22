@@ -31,6 +31,10 @@ export function isPathAuthorized(pathname: string, menuPaths: string[]): boolean
 
   if (path === '/') return true;
 
+  if (path === '/notifications' || /^\/notifications\/[^/]+$/.test(path)) {
+    return true;
+  }
+
   const hasSystemConfiguration = menuPaths.some(
     (p) => p.replace(/\/+$/, '') === '/system/configuration'
   );

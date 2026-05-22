@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { apiClient } from '../api/http';
 import { type AuthResult, isMfaChallenge } from '../api/mfa';
+import { useNotificationStore } from './notificationStore';
 
 export type LoginFlowResult =
   | { status: 'complete' }
@@ -172,6 +173,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        useNotificationStore.getState().disconnect();
         set({
           accessToken: null,
           refreshToken: null,

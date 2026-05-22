@@ -13,6 +13,8 @@ from iip_core.db import get_db
 from iip_core.logging import get_logger
 from iam_svc.dependencies import require_system_admin_user
 from iam_svc.repositories.system_settings_repository import SystemSettingsRepository
+from iam_svc.services.notification_dispatch import publish_to_active_users
+from iam_svc.services.notification_events import mfa_policy_changed_event
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -48,9 +50,18 @@ async def update_mfa_policy(
         payload.force_mfa,
         uuid.UUID(current_user.user_id),
     )
+    force_mfa = bool(updated["force_mfa"])
     logger.info(
         "mfa_policy_updated",
-        force_mfa=payload.force_mfa,
+        force_mfa=force_mfa,
         by=current_user.username,
     )
-    return MfaPolicyResponse(force_mfa=bool(updated["force_mfa"]))
+
+    event = mfa_policy_changed_event(force_mfa=force_mfa, changed_by=current_user.username)
+    await publish_to_active_users(
+        db,
+        event,
+        exclude_user_ids={current_user.user_id},
+    )
+
+    return MfaPolicyResponse(force_mfa=force_mfa)
