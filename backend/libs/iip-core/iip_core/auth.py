@@ -168,7 +168,7 @@ def require_role(role: str):
         if role not in user.roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Role '{role}' is required to access this resource.",
+                detail="You do not have permission to access this resource.",
             )
         return user
 
@@ -184,7 +184,7 @@ def require_any_role(*roles: str):
         if not allowed.intersection(user.roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"One of roles {sorted(allowed)} is required to access this resource.",
+                detail="You do not have permission to access this resource.",
             )
         return user
 
@@ -202,7 +202,7 @@ def require_clearance(level: ClassificationLevel):
         if user_idx < required_idx:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Clearance level '{level}' is required.",
+                detail="You do not have permission to access this resource.",
             )
         return user
 

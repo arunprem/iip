@@ -33,6 +33,7 @@ from iip_core.settings import BaseServiceSettings
 from .routers import auth as auth_router
 from .routers import mfa as mfa_router
 from .routers import mfa_profile as mfa_profile_router
+from .routers import mobile as mobile_router
 from .routers import notifications as notifications_router
 from .routers import security as security_router
 from .routers import profile as profile_router
@@ -91,6 +92,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Initialize database connection pool
     init_db(settings)
     logger.info("Database connection pool initialized")
+
+    from iip_core.object_storage import get_object_storage
+
+    try:
+        await get_object_storage().ensure_ready()
+        logger.info("object_storage_ready", bucket=settings.s3_bucket)
+    except Exception as exc:
+        logger.warning("object_storage_init_failed", error=str(exc))
 
     if settings.keycloak_enabled:
         logger.info(
@@ -184,6 +193,7 @@ def create_app() -> FastAPI:
     app.include_router(menus_router.router, prefix="/api/v1/iam/menus", tags=["menus"])
     app.include_router(privileges_router.router, prefix="/api/v1/iam/privileges", tags=["privileges"])
     app.include_router(access_router.router, prefix="/api/v1/iam/access", tags=["access"])
+    app.include_router(mobile_router.router, prefix="/api/v1/mobile", tags=["mobile"])
     app.include_router(offices_router.router, prefix="/api/v1/iam/offices", tags=["offices"])
     app.include_router(
         office_lookups_router.router,

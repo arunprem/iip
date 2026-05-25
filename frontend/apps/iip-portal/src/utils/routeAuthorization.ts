@@ -4,7 +4,7 @@ import type { NavMenuItem } from '../hooks/useNavMenus';
 export const ALWAYS_ALLOWED_PATHS = ['/dashboard', '/unauthorized', '/profile'] as const;
 
 /** Opened from System configuration hub — not listed as separate menu items. */
-export const SYSTEM_CONFIGURATION_CHILD_PATHS = ['/system/security'] as const;
+export const SYSTEM_CONFIGURATION_CHILD_PATHS = ['/system/security', '/system/mobile-widgets'] as const;
 
 export function collectMenuPaths(items: NavMenuItem[]): string[] {
   const paths: string[] = [];

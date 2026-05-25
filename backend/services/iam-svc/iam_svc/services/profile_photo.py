@@ -1,12 +1,18 @@
-"""Profile photo storage on local disk."""
+"""Profile photo storage in MinIO (S3-compatible object storage)."""
 
 from __future__ import annotations
 
-import os
 import uuid
 from pathlib import Path
 
 from fastapi import UploadFile
+
+from iip_core.object_storage import (
+    get_object_storage,
+    is_object_storage_key,
+    profile_photo_object_key,
+    profile_photo_prefix,
+)
 
 PROFILE_PHOTO_MAX_BYTES = 2 * 1024 * 1024
 ALLOWED_PHOTO_CONTENT_TYPES = {
@@ -15,12 +21,12 @@ ALLOWED_PHOTO_CONTENT_TYPES = {
     "image/webp": ".webp",
 }
 
-
-def profile_photos_dir() -> Path:
-    configured = os.getenv("IAM_PROFILE_PHOTOS_DIR")
-    if configured:
-        return Path(configured)
-    return Path(__file__).resolve().parents[1] / "data" / "profile-photos"
+EXTENSION_TO_MEDIA = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
 
 
 def profile_photo_api_path() -> str:
@@ -33,17 +39,24 @@ def profile_photo_url(user_id: str | uuid.UUID, has_photo: bool) -> str | None:
     return profile_photo_api_path()
 
 
-def photo_filename(user_id: str | uuid.UUID, extension: str) -> str:
-    return f"{user_id}{extension}"
+def _content_type_for_key(key: str) -> str:
+    suffix = Path(key).suffix.lower()
+    return EXTENSION_TO_MEDIA.get(suffix, "application/octet-stream")
 
 
-def resolve_photo_file(stored_path: str | None) -> Path | None:
-    if not stored_path:
+def _object_key_for_stored_path(stored_path: str) -> str | None:
+    if is_object_storage_key(stored_path):
+        return stored_path
+
+    suffix = Path(stored_path).suffix.lower()
+    if suffix not in EXTENSION_TO_MEDIA:
         return None
-    path = profile_photos_dir() / stored_path
-    if path.is_file():
-        return path
-    return None
+    user_part = stored_path[: -len(suffix)]
+    try:
+        uid = uuid.UUID(user_part)
+    except ValueError:
+        return None
+    return profile_photo_object_key(uid, suffix)
 
 
 async def save_profile_photo(user_id: uuid.UUID, upload: UploadFile) -> str:
@@ -58,25 +71,41 @@ async def save_profile_photo(user_id: uuid.UUID, upload: UploadFile) -> str:
     if len(data) > PROFILE_PHOTO_MAX_BYTES:
         raise ValueError("too_large")
 
-    directory = profile_photos_dir()
-    directory.mkdir(parents=True, exist_ok=True)
+    storage = get_object_storage()
+    if not storage.enabled:
+        raise RuntimeError("object_storage_unavailable")
 
-    filename = photo_filename(user_id, extension)
-    target = directory / filename
-    target.write_bytes(data)
-
-    # Remove other extensions for this user after a format change
-    for ext in ALLOWED_PHOTO_CONTENT_TYPES.values():
-        if ext == extension:
-            continue
-        stale = directory / photo_filename(user_id, ext)
-        if stale.is_file():
-            stale.unlink()
-
-    return filename
+    object_key = profile_photo_object_key(user_id, extension)
+    await storage.put(object_key, data, content_type)
+    await storage.delete_prefix(profile_photo_prefix(user_id), keep_key=object_key)
+    return object_key
 
 
-def delete_profile_photo_file(stored_path: str | None) -> None:
-    path = resolve_photo_file(stored_path)
-    if path and path.is_file():
-        path.unlink()
+async def load_profile_photo(stored_path: str | None) -> tuple[bytes, str] | None:
+    if not stored_path:
+        return None
+
+    storage = get_object_storage()
+    if not storage.enabled:
+        return None
+
+    object_key = _object_key_for_stored_path(stored_path)
+    if not object_key:
+        return None
+
+    result = await storage.get(object_key)
+    if not result:
+        return None
+
+    data, content_type = result
+    if content_type == "application/octet-stream":
+        content_type = _content_type_for_key(object_key)
+    return data, content_type
+
+
+async def delete_profile_photo(stored_path: str | None) -> None:
+    if not stored_path:
+        return
+    object_key = _object_key_for_stored_path(stored_path)
+    if object_key:
+        await get_object_storage().delete(object_key)

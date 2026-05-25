@@ -38,6 +38,7 @@ const MyProfile          = React.lazy(() => import('../pages/MyProfile'))
 const Notifications      = React.lazy(() => import('../pages/Notifications'))
 const SystemConfiguration = React.lazy(() => import('../pages/system/SystemConfiguration'))
 const SecuritySettings   = React.lazy(() => import('../pages/system/SecuritySettings'))
+const MobileWidgetManagement = React.lazy(() => import('../pages/system/MobileWidgetManagement'))
 const UnauthorizedPage   = React.lazy(() => import('../pages/UnauthorizedPage'))
 
 const queryClient = new QueryClient({
@@ -260,6 +261,14 @@ const AuthenticatedLayout = () => {
                   element={
                     <SystemAdminRoute>
                       <SystemConfiguration />
+                    </SystemAdminRoute>
+                  }
+                />
+                <Route
+                  path="/system/mobile-widgets"
+                  element={
+                    <SystemAdminRoute>
+                      <MobileWidgetManagement />
                     </SystemAdminRoute>
                   }
                 />

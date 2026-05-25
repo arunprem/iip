@@ -42,6 +42,22 @@ iam-svc-dev:
 		--reload-dir iam_svc \
 		--reload-dir ../../libs/iip-core/iip_core
 
+# Flutter mobile app (requires Flutter SDK). Android emulator: use 10.0.2.2 for localhost.
+mobile-bootstrap:
+	cd mobile/iip_app && flutter create . --project-name iip_app --org gov.in.iip
+
+mobile-dev:
+	cd mobile/iip_app && flutter pub get && flutter run \
+		--dart-define=API_BASE_URL=http://127.0.0.1:8010
+
+mobile-dev-android:
+	cd mobile/iip_app && flutter pub get && flutter run \
+		--dart-define=API_BASE_URL=http://10.0.2.2:8010
+
+# Physical phone on same Wi‑Fi — uses Mac LAN IP automatically
+mobile-dev-device:
+	cd mobile/iip_app && $(MAKE) mobile-dev-device
+
 run: docker-up
 	pnpm --filter iip-portal run dev & \
 	KEYCLOAK_SERVER_URL=http://localhost:8081 \

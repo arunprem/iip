@@ -11,48 +11,8 @@ type UnauthorizedState = {
   reason?: UnauthorizedReason;
 };
 
-function messageForReason(reason: UnauthorizedReason | undefined, from: string | undefined): string {
-  switch (reason) {
-    case 'admin_required':
-      return (
-        <>
-          This area is limited to <strong>System Administrator</strong> or <strong>IT Administrator</strong>{' '}
-          roles at your currently selected office.
-          {from ? (
-            <>
-              {' '}
-              You tried to open <code className="text-sm font-mono bg-iip-bg px-1.5 py-0.5 rounded">{from}</code>.
-            </>
-          ) : null}
-        </>
-      );
-    case 'menu':
-      return (
-        <>
-          Your account does not have permission to open this page
-          {from ? (
-            <>
-              {' '}
-              (<code className="text-sm font-mono bg-iip-bg px-1.5 py-0.5 rounded">{from}</code>)
-            </>
-          ) : null}
-          . Choose a module from the sidebar or switch to an office where you have the required role.
-        </>
-      );
-    default:
-      return (
-        <>
-          You are signed in, but this URL is not available for your current office and role.
-          {from ? (
-            <>
-              {' '}
-              Requested path:{' '}
-              <code className="text-sm font-mono bg-iip-bg px-1.5 py-0.5 rounded">{from}</code>.
-            </>
-          ) : null}
-        </>
-      );
-  }
+function messageForReason(_reason: UnauthorizedReason | undefined, _from: string | undefined): string {
+  return 'You do not have permission to open this page. Choose a module from the sidebar or contact your administrator if you need access.';
 }
 
 export default function UnauthorizedPage() {
@@ -101,7 +61,7 @@ export default function UnauthorizedPage() {
           </AdminButton>
         </div>
         <p className="mt-6 text-xs text-iip-text-muted">
-          Need access? Contact your system administrator to assign the correct office and role.
+          Need access? Contact your system administrator.
         </p>
       </div>
     </div>

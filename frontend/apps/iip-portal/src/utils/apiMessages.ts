@@ -47,13 +47,31 @@ export function extractApiDetail(data: unknown): {
   return {};
 }
 
+/** Generic message for authorization failures — never expose roles or privileges. */
+export const GENERIC_FORBIDDEN_MESSAGE =
+  'You do not have permission to perform this action.';
+
+const FORBIDDEN_DISCLOSURE =
+  /SYSTEM_ADMIN|IT_ADMIN|WATCH_OFFICER|SUPERVISOR|ANALYST|role is required|required role|One of roles|Role '[\w-]+' is required|Clearance level|administrator role|privilege.*required/i;
+
+/** Strip role/privilege hints from 403 responses (defense in depth). */
+export function sanitizeForbiddenDetail(
+  detail: string | undefined,
+  status?: number
+): string | undefined {
+  if (status !== 403 || !detail?.trim()) return detail;
+  if (FORBIDDEN_DISCLOSURE.test(detail)) return GENERIC_FORBIDDEN_MESSAGE;
+  return detail;
+}
+
 export function extractApiErrorMessage(data: unknown, status?: number): string {
   const { detail } = extractApiDetail(data);
+  const safeDetail = sanitizeForbiddenDetail(detail, status);
 
-  if (detail) return detail;
+  if (safeDetail) return safeDetail;
 
   if (status === 401) return 'Session expired or invalid credentials.';
-  if (status === 403) return 'You do not have permission to perform this action.';
+  if (status === 403) return GENERIC_FORBIDDEN_MESSAGE;
   if (status === 404) return 'The requested resource was not found.';
   if (status === 409) return 'This operation conflicts with existing data.';
   if (status && status >= 500) return 'Server error. Please try again later.';

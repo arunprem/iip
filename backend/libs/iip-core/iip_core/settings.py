@@ -109,6 +109,17 @@ class BaseServiceSettings(BaseSettings):
     vault_addr: str = "http://localhost:8200"
     vault_token: str = "iip-vault-root-token"
 
+    # ── Object storage (MinIO / S3) ───────────────────────────────────────────
+    s3_endpoint_url: str | None = Field(
+        default="http://localhost:9000",
+        description="S3-compatible endpoint (MinIO in local dev)",
+    )
+    s3_access_key: str = Field(default="iip_minio_user")
+    s3_secret_key: str = Field(default="iip_minio_password")
+    s3_bucket: str = Field(default="iip-uploads", description="Primary uploads bucket")
+    s3_region: str = "us-east-1"
+    s3_use_ssl: bool = False
+
     # ── Observability ──────────────────────────────────────────────────────────
     otlp_endpoint: str | None = None
     log_level: str = "INFO"

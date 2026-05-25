@@ -6,7 +6,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field
 
 from iip_core.auth import CurrentUser, hash_password
@@ -20,7 +20,7 @@ from iam_svc.repositories.user_repository import UserRepository
 from iam_svc.routers.users import _validate_unique_fields
 from iam_svc.services.profile_photo import (
     PROFILE_PHOTO_MAX_BYTES,
-    resolve_photo_file,
+    load_profile_photo,
     save_profile_photo,
 )
 
@@ -163,7 +163,16 @@ async def upload_my_photo(
     user = await repo.get_by_id_or_error(current_user.user_id)
 
     try:
-        filename = await save_profile_photo(user.id, file)
+        object_key = await save_profile_photo(user.id, file)
+    except RuntimeError as exc:
+        if str(exc) == "object_storage_unavailable":
+            raise IIPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                error_code=ErrorCode.SERVICE_UNAVAILABLE,
+                detail="Photo storage is temporarily unavailable. Please try again later.",
+                meta={"field": "file"},
+            ) from exc
+        raise
     except ValueError as exc:
         reason = str(exc)
         if reason == "unsupported_type":
@@ -182,7 +191,7 @@ async def upload_my_photo(
             meta={"field": field},
         ) from exc
 
-    user.profile_photo_path = filename
+    user.profile_photo_path = object_key
     updated = await repo.update(user)
     logger.info("profile_photo_uploaded", user_id=str(user.id), by=current_user.username)
     return _to_profile_response(updated)
@@ -192,21 +201,15 @@ async def upload_my_photo(
 async def get_my_photo(
     current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> FileResponse:
+) -> Response:
     user = await UserRepository(db).get_by_id_or_error(current_user.user_id)
-    path = resolve_photo_file(user.profile_photo_path)
-    if not path:
+    loaded = await load_profile_photo(user.profile_photo_path)
+    if not loaded:
         raise IIPException(
             status_code=status.HTTP_404_NOT_FOUND,
             error_code=ErrorCode.NOT_FOUND,
             detail="Profile photo not found.",
         )
 
-    media = {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".webp": "image/webp",
-    }
-    content_type = media.get(path.suffix.lower(), "application/octet-stream")
-    return FileResponse(path, media_type=content_type)
+    data, content_type = loaded
+    return Response(content=data, media_type=content_type)

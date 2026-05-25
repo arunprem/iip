@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ChevronRight, Clock, FileText, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import { ChevronRight, Clock, FileText, ShieldCheck, SlidersHorizontal, Smartphone } from 'lucide-react';
 import { AdminPageLayout } from '../../components/admin/AdminPageLayout';
 
 type ConfigCard = {
@@ -18,6 +18,15 @@ const CONFIG_CARDS: ConfigCard[] = [
     description:
       'Require two-factor authentication for all users, and manage organization-wide sign-in security.',
     icon: ShieldCheck,
+    available: true,
+    badge: 'Active',
+  },
+  {
+    to: '/system/mobile-widgets',
+    title: 'Mobile App Widgets',
+    description:
+      'Control which modules appear in the IIP iOS and Android app. Users still need matching privileges.',
+    icon: Smartphone,
     available: true,
     badge: 'Active',
   },

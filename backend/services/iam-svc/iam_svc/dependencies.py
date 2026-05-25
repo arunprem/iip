@@ -86,7 +86,7 @@ def require_system_admin_role(
     if role.role_name not in ("SYSTEM_ADMIN", "IT_ADMIN"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="SYSTEM_ADMIN or IT_ADMIN role is required for this office.",
+            detail="You do not have permission to perform this action.",
         )
     return role
 
@@ -98,6 +98,6 @@ def require_system_admin_user(
     if not any(r in ("SYSTEM_ADMIN", "IT_ADMIN") for r in current_user.roles):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="SYSTEM_ADMIN or IT_ADMIN role is required.",
+            detail="You do not have permission to perform this action.",
         )
     return current_user
