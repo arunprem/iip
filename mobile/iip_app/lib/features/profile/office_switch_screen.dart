@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/motion/iip_motion.dart';
 import '../auth/auth_controller.dart';
 import '../../models/auth_models.dart';
 import '../../core/theme/iip_colors.dart';
@@ -33,6 +34,8 @@ class OfficeSwitchScreen extends StatelessWidget {
           )
         : ListView.separated(
             padding: const EdgeInsets.all(16),
+            cacheExtent: IipMotion.scrollCacheExtent,
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             itemCount: offices.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, index) {

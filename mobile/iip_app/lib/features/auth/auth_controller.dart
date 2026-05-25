@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import '../../core/network/api_client.dart';
+import '../../core/security/device_lock_service.dart';
+import '../../core/storage/device_lock_storage.dart';
 import '../../core/storage/profile_photo_cache.dart';
 import '../../core/storage/token_storage.dart';
 import '../../core/theme/iip_colors.dart';
@@ -9,15 +13,33 @@ import '../../models/auth_models.dart';
 import '../../models/mobile_session.dart';
 import '../../models/profile_models.dart';
 
-enum AuthStatus { unknown, unauthenticated, needsOffice, authenticated }
+enum AuthStatus {
+  unknown,
+  unauthenticated,
+  needsOffice,
+  needsDeviceLockSetup,
+  needsDeviceUnlock,
+  authenticated,
+}
 
 class AuthController extends ChangeNotifier {
-  AuthController({ApiClient? api, TokenStorage? storage})
-      : _api = api ?? ApiClient(),
-        _storage = storage ?? TokenStorage();
+  AuthController({
+    ApiClient? api,
+    TokenStorage? storage,
+    DeviceLockStorage? deviceLock,
+    DeviceLockService? deviceLockService,
+    bool? initialDark,
+  })  : _api = api ?? ApiClient(),
+        _storage = storage ?? TokenStorage(),
+        deviceLock = deviceLock ?? DeviceLockStorage(),
+        _deviceLockService = deviceLockService ?? DeviceLockService(),
+        isDark = initialDark ?? true,
+        colors = (initialDark ?? true) ? IipColors.dark : IipColors.light;
 
   final ApiClient _api;
   final TokenStorage _storage;
+  final DeviceLockStorage deviceLock;
+  final DeviceLockService _deviceLockService;
 
   AuthStatus status = AuthStatus.unknown;
   UserProfile? user;
@@ -29,43 +51,187 @@ class AuthController extends ChangeNotifier {
   int _memoryPhotoVersion = -1;
   String? mfaToken;
   bool enrollmentRequired = false;
-  bool isDark = true;
-  IipColors colors = IipColors.dark;
+  late bool isDark;
+  late IipColors colors;
   String? errorMessage;
   bool isBusy = false;
+  int appSessionGeneration = 0;
 
   Future<void> bootstrap() async {
     isDark = await _storage.readDarkMode();
     colors = isDark ? IipColors.dark : IipColors.light;
+    errorMessage = null;
     try {
-      final access = await _storage.readAccess();
-      final officeId = await _storage.readOfficeId();
-      if (access == null) {
-        status = AuthStatus.unauthenticated;
-        return;
-      }
-      _api.setAccessToken(access);
-      if (officeId != null) {
-        _api.setOfficeId(officeId);
-        await _loadSession();
-        status = AuthStatus.authenticated;
-        _loadProfileInBackground();
-      } else {
-        await _fetchUser();
-        status = user!.offices.isEmpty ? AuthStatus.unauthenticated : AuthStatus.needsOffice;
-      }
+      await _restoreSessionFromStorage();
     } on ApiException catch (e) {
-      await _resetSessionAfterBootstrapFailure(e.message);
-    } catch (_) {
-      await _resetSessionAfterBootstrapFailure(
-        'Cannot reach server. Check API URL and Wi‑Fi.',
-      );
+      await _handleBootstrapFailure(e);
+    } catch (e) {
+      await _handleBootstrapFailure(e);
     } finally {
       notifyListeners();
     }
   }
 
-  Future<void> _resetSessionAfterBootstrapFailure(String message) async {
+  /// Cold start: restore tokens, show app lock if configured, refresh JWT when expired.
+  Future<void> _restoreSessionFromStorage() async {
+    if (!await _storage.hasStoredSession()) {
+      status = AuthStatus.unauthenticated;
+      return;
+    }
+
+    var access = await _storage.readAccess();
+    if (access == null || access.isEmpty) {
+      final refreshed = await _tryRefreshTokens();
+      if (!refreshed) {
+        status = AuthStatus.unauthenticated;
+        return;
+      }
+      access = await _storage.readAccess();
+    }
+    if (access == null || access.isEmpty) {
+      status = AuthStatus.unauthenticated;
+      return;
+    }
+
+    _api.setAccessToken(access);
+    final officeId = await _storage.readOfficeId();
+    if (officeId != null && officeId.isNotEmpty) {
+      _api.setOfficeId(officeId);
+    }
+
+    // App lock is local — show unlock before any network call (works when JWT expired).
+    if (await deviceLock.isLockActive()) {
+      status = AuthStatus.needsDeviceUnlock;
+      return;
+    }
+
+    if (officeId != null && officeId.isNotEmpty) {
+      await _apiWithRefresh(() async {
+        await _fetchUser();
+        await _loadSession();
+        try {
+          await loadProfile();
+        } catch (_) {}
+        status = await _resolvePostSignInStatus();
+      });
+      return;
+    }
+
+    await _apiWithRefresh(() async {
+      await _fetchUser();
+      status = user!.offices.isEmpty ? AuthStatus.unauthenticated : AuthStatus.needsOffice;
+    });
+  }
+
+  Future<bool> _tryRefreshTokens() async {
+    final refresh = await _storage.readRefresh();
+    if (refresh == null || refresh.isEmpty) return false;
+    try {
+      final data = await _api.postJson('/auth/refresh', {'refresh_token': refresh});
+      final access = data['access_token'] as String?;
+      final newRefresh = data['refresh_token'] as String?;
+      if (access == null ||
+          access.isEmpty ||
+          newRefresh == null ||
+          newRefresh.isEmpty) {
+        return false;
+      }
+      await _storage.saveTokens(access: access, refresh: newRefresh);
+      _api.setAccessToken(access);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _apiWithRefresh(Future<void> Function() action) async {
+    try {
+      await action();
+    } on ApiException catch (e) {
+      if (!_isAuthApiError(e) || !await _tryRefreshTokens()) rethrow;
+      await action();
+    }
+  }
+
+  bool _isAuthApiError(ApiException e) =>
+      e.statusCode == 401 || e.statusCode == 403;
+
+  bool _isTransientError(Object e) {
+    if (e is ApiException) {
+      final code = e.statusCode;
+      if (code == null) return true;
+      if (code >= 500) return true;
+      return false;
+    }
+    return e is TimeoutException ||
+        e is SocketException ||
+        e is HandshakeException ||
+        e is IOException;
+  }
+
+  Future<void> _handleBootstrapFailure(Object e) async {
+    if (e is ApiException && _isAuthApiError(e)) {
+      if (await _tryRefreshTokens()) {
+        try {
+          await _restoreSessionFromStorage();
+          return;
+        } catch (retryError) {
+          await _handleBootstrapFailure(retryError);
+          return;
+        }
+      }
+      await _clearSessionToLogin(
+        e.message.isNotEmpty ? e.message : 'Session expired. Please sign in again.',
+      );
+      return;
+    }
+
+    if (_isTransientError(e) || (e is ApiException && !_isAuthApiError(e))) {
+      final kept = await _bootstrapOfflineFallback();
+      if (!kept) {
+        errorMessage = e is ApiException
+            ? e.message
+            : 'Cannot reach server. Check API URL and Wi‑Fi.';
+      }
+      return;
+    }
+
+    final kept = await _bootstrapOfflineFallback();
+    if (!kept) {
+      await _clearSessionToLogin('Could not restore your session. Please sign in again.');
+    }
+  }
+
+  /// Keep local session when the server is unreachable; still show app lock if set.
+  Future<bool> _bootstrapOfflineFallback() async {
+    if (!await _storage.hasStoredSession()) return false;
+
+    final access = await _storage.readAccess();
+    if (access != null && access.isNotEmpty) {
+      _api.setAccessToken(access);
+    }
+
+    final officeId = await _storage.readOfficeId();
+    if (officeId != null && officeId.isNotEmpty) {
+      _api.setOfficeId(officeId);
+    }
+
+    if (await deviceLock.isLockActive()) {
+      status = AuthStatus.needsDeviceUnlock;
+      errorMessage = null;
+      return true;
+    }
+
+    if (officeId != null && officeId.isNotEmpty) {
+      status = AuthStatus.authenticated;
+      errorMessage = 'Cannot reach server. You are still signed in.';
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> _clearSessionToLogin(String message) async {
     await _storage.clearTokens();
     await _storage.clearOfficeId();
     _api.setAccessToken(null);
@@ -173,10 +339,7 @@ class AuthController extends ChangeNotifier {
     try {
       _api.setOfficeId(officeId);
       await _storage.saveOfficeId(officeId);
-      await _loadSession();
-      await loadProfile();
-      _warmProfilePhotoCache();
-      status = AuthStatus.authenticated;
+      await _afterOfficeSelected();
     } on ApiException catch (e) {
       errorMessage = e.message;
       rethrow;
@@ -185,6 +348,95 @@ class AuthController extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<void> _afterOfficeSelected() async {
+    await _loadSession();
+    try {
+      await loadProfile();
+    } catch (_) {}
+    _warmProfilePhotoCache();
+    status = await _resolvePostSignInStatus();
+  }
+
+  /// After password login + office: require app lock setup until configured or skipped.
+  Future<AuthStatus> _resolvePostSignInStatus() async {
+    if (await deviceLock.isLockActive()) {
+      return AuthStatus.authenticated;
+    }
+    final userId = user?.userId ?? profile?.userId ?? '';
+    if (userId.isEmpty) return AuthStatus.authenticated;
+    await deviceLock.clearLegacySetupFlags(userId);
+    if (await deviceLock.isSetupSkipped(userId)) {
+      return AuthStatus.authenticated;
+    }
+    return AuthStatus.needsDeviceLockSetup;
+  }
+
+  Future<void> completeDeviceUnlock() async {
+    isBusy = true;
+    notifyListeners();
+    try {
+      await _enterAuthenticated(loadProfile: true);
+    } finally {
+      isBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _enterAuthenticated({required bool loadProfile}) async {
+    try {
+      await _apiWithRefresh(_loadSession);
+    } catch (_) {
+      colors = isDark ? IipColors.dark : IipColors.light;
+    }
+    if (profile == null && user == null) {
+      try {
+        await _apiWithRefresh(_fetchUser);
+      } catch (_) {}
+    }
+    if (loadProfile) {
+      _loadProfileInBackground();
+    }
+    status = AuthStatus.authenticated;
+    errorMessage = null;
+  }
+
+  Future<void> skipDeviceLockSetup() async {
+    final userId = user?.userId ?? profile?.userId;
+    if (userId != null && userId.isNotEmpty) {
+      await deviceLock.markSetupSkipped(userId);
+    }
+    status = AuthStatus.authenticated;
+    notifyListeners();
+  }
+
+  Future<void> setupDeviceLockPin(String pin, {required bool withBiometric}) async {
+    final userId = user?.userId ?? profile?.userId;
+    if (userId == null || userId.isEmpty) {
+      throw StateError('User not loaded.');
+    }
+    if (pin.length != 6) {
+      throw ArgumentError('PIN must be 6 digits.');
+    }
+    await deviceLock.savePinLock(userId: userId, pin: pin, withBiometric: withBiometric);
+    status = AuthStatus.authenticated;
+    notifyListeners();
+  }
+
+  Future<void> setupDeviceLockBiometricOnly() async {
+    final userId = user?.userId ?? profile?.userId;
+    if (userId == null || userId.isEmpty) {
+      throw StateError('User not loaded.');
+    }
+    if (!await _deviceLockService.canUseBiometrics()) {
+      throw StateError('Biometrics not available on this device.');
+    }
+    await deviceLock.saveBiometricOnlyLock(userId: userId);
+    status = AuthStatus.authenticated;
+    notifyListeners();
+  }
+
+  Future<bool> verifyDeviceLockPin(String pin) => deviceLock.verifyPin(pin);
 
   void _warmProfilePhotoCache() {
     if (profile?.hasProfilePhoto != true) return;
@@ -332,6 +584,7 @@ class AuthController extends ChangeNotifier {
     final userId = profile?.userId ?? user?.userId;
     await _storage.clearTokens();
     await _storage.clearOfficeId();
+    await deviceLock.clearAll(userId: userId);
     _api.setAccessToken(null);
     _api.setOfficeId(null);
     _clearProfilePhotoMemory();
@@ -341,6 +594,9 @@ class AuthController extends ChangeNotifier {
     session = null;
     profilePhotoVersion = 0;
     mfaToken = null;
+    enrollmentRequired = false;
+    errorMessage = null;
+    appSessionGeneration++;
     status = AuthStatus.unauthenticated;
     colors = isDark ? IipColors.dark : IipColors.light;
     notifyListeners();
@@ -360,8 +616,10 @@ class AuthController extends ChangeNotifier {
     await _fetchUser();
     if (user!.offices.length == 1) {
       await selectOffice(user!.offices.first.officeId);
+      notifyListeners();
     } else {
       status = AuthStatus.needsOffice;
+      notifyListeners();
     }
   }
 

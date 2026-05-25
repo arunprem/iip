@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/motion/iip_motion.dart';
+import '../../core/motion/iip_page_route.dart';
 import '../../shared/widgets/auth/mobile_text_field.dart';
 import '../../shared/widgets/mobile_section.dart';
 import '../auth/auth_controller.dart';
+import '../auth/device_lock_setup_screen.dart';
 import 'office_switch_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -13,6 +16,19 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  bool _lockEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshLockState());
+  }
+
+  Future<void> _refreshLockState() async {
+    final auth = context.read<AuthController>();
+    final enabled = await auth.deviceLock.isLockActive();
+    if (mounted) setState(() => _lockEnabled = enabled);
+  }
   final _currentPw = TextEditingController();
   final _newPw = TextEditingController();
   final _confirmPw = TextEditingController();
@@ -99,7 +115,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-    if (ok == true) await auth.logout();
+    if (ok == true) {
+      await auth.logout();
+    }
+  }
+
+  Future<void> _manageAppLock(AuthController auth) async {
+    if (_lockEnabled) {
+      final disable = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Turn off app lock?'),
+          content: const Text(
+            'PIN and fingerprint unlock will be removed. You will sign in with password only.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Turn off')),
+          ],
+        ),
+      );
+      if (disable == true) {
+        final userId = auth.profile?.userId ?? auth.user?.userId;
+        await auth.deviceLock.clearAll(userId: userId);
+        await _refreshLockState();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('App lock turned off.'), behavior: SnackBarBehavior.floating),
+          );
+        }
+      }
+      return;
+    }
+    await context.pushSmooth(const DeviceLockSetupScreen());
+    await _refreshLockState();
   }
 
   @override
@@ -117,6 +166,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
+        cacheExtent: IipMotion.scrollCacheExtent,
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         children: [
           MobileSectionHeader(title: 'Appearance', colors: colors),
           MobileSettingsGroup(
@@ -157,15 +208,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.apartment_rounded,
                   title: 'Working unit',
                   subtitle: auth.currentOffice?.officeName ?? 'Select unit',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const OfficeSwitchScreen()),
-                  ),
+                  onTap: () => context.pushSmooth(const OfficeSwitchScreen()),
                 ),
               ],
             ),
           ],
           const SizedBox(height: 20),
           MobileSectionHeader(title: 'Security', colors: colors),
+          MobileSettingsGroup(
+            colors: colors,
+            children: [
+              MobileSettingsTile(
+                colors: colors,
+                icon: Icons.fingerprint_rounded,
+                title: 'App lock',
+                subtitle: _lockEnabled
+                    ? 'PIN or fingerprint required when opening the app'
+                    : 'Set up quick unlock after sign-in',
+                onTap: () => _manageAppLock(auth),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(

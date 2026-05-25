@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme/iip_colors.dart';
 
-/// Six-digit TOTP entry with individual boxes (mobile-standard OTP UX).
+/// OTP-style PIN entry with individual boxes.
 class PinCodeInput extends StatefulWidget {
   const PinCodeInput({
     super.key,
@@ -11,6 +11,7 @@ class PinCodeInput extends StatefulWidget {
     required this.onCompleted,
     this.enabled = true,
     this.length = 6,
+    this.autofocus = false,
   });
 
   final IipColors colors;
@@ -18,12 +19,13 @@ class PinCodeInput extends StatefulWidget {
   final ValueChanged<String> onCompleted;
   final bool enabled;
   final int length;
+  final bool autofocus;
 
   @override
-  State<PinCodeInput> createState() => _PinCodeInputState();
+  State<PinCodeInput> createState() => PinCodeInputState();
 }
 
-class _PinCodeInputState extends State<PinCodeInput> {
+class PinCodeInputState extends State<PinCodeInput> {
   late final List<TextEditingController> _controllers;
   late final List<FocusNode> _focusNodes;
 
@@ -32,6 +34,11 @@ class _PinCodeInputState extends State<PinCodeInput> {
     super.initState();
     _controllers = List.generate(widget.length, (_) => TextEditingController());
     _focusNodes = List.generate(widget.length, (_) => FocusNode());
+    if (widget.autofocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.enabled) _focusNodes.first.requestFocus();
+      });
+    }
   }
 
   @override
@@ -43,6 +50,16 @@ class _PinCodeInputState extends State<PinCodeInput> {
       f.dispose();
     }
     super.dispose();
+  }
+
+  void clear() {
+    for (final c in _controllers) {
+      c.clear();
+    }
+    if (widget.enabled) {
+      _focusNodes.first.requestFocus();
+    }
+    widget.onChanged('');
   }
 
   String get _value => _controllers.map((c) => c.text).join();
@@ -71,49 +88,59 @@ class _PinCodeInputState extends State<PinCodeInput> {
     _notify();
   }
 
+  static const double _cellWidth = 46;
+  static const double _cellHeight = 58;
+  static const double _cellGap = 6;
+
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: List.generate(widget.length, (index) {
-        return SizedBox(
-          width: 46,
-          height: 54,
-          child: TextField(
-            controller: _controllers[index],
-            focusNode: _focusNodes[index],
-            enabled: widget.enabled,
-            textAlign: TextAlign.center,
-            keyboardType: TextInputType.number,
-            maxLength: 1,
-            style: TextStyle(
-              color: widget.colors.text,
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
+    return Center(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(widget.length, (index) {
+          return Padding(
+            padding: EdgeInsets.only(left: index == 0 ? 0 : _cellGap),
+            child: SizedBox(
+              width: _cellWidth,
+              height: _cellHeight,
+              child: TextField(
+                controller: _controllers[index],
+                focusNode: _focusNodes[index],
+                enabled: widget.enabled,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                maxLength: 1,
+                style: TextStyle(
+                  color: widget.colors.text,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                ),
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: InputDecoration(
+                  counterText: '',
+                  filled: true,
+                  fillColor: widget.colors.bg,
+                  contentPadding: EdgeInsets.zero,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: widget.colors.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: widget.colors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: widget.colors.primary, width: 2),
+                  ),
+                ),
+                onChanged: (v) => _onChanged(index, v),
+              ),
             ),
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: InputDecoration(
-              counterText: '',
-              filled: true,
-              fillColor: widget.colors.bg,
-              contentPadding: EdgeInsets.zero,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: widget.colors.border),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: widget.colors.border),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: widget.colors.primary, width: 2),
-              ),
-            ),
-            onChanged: (v) => _onChanged(index, v),
-          ),
-        );
-      }),
+          );
+        }),
+      ),
     );
   }
 }

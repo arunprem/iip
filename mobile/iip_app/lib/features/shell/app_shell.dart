@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/theme/iip_colors.dart';
 import '../auth/auth_controller.dart';
 import '../home/home_screen.dart';
 import '../profile/account_screen.dart';
@@ -16,36 +17,39 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthController>();
-    final colors = auth.colors;
-
-    return Scaffold(
-      backgroundColor: colors.bg,
-      body: IndexedStack(
-        index: _index,
-        children: const [
-          HomeScreen(),
-          AccountScreen(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        backgroundColor: colors.surface,
-        indicatorColor: colors.primary.withValues(alpha: 0.15),
-        destinations: [
-          NavigationDestination(
-            icon: Icon(Icons.grid_view_rounded, color: colors.textMuted),
-            selectedIcon: Icon(Icons.grid_view_rounded, color: colors.primary),
-            label: 'Home',
+    return Selector<AuthController, IipColors>(
+      selector: (_, auth) => auth.colors,
+      builder: (context, colors, _) {
+        return Scaffold(
+          backgroundColor: colors.bg,
+          body: IndexedStack(
+            index: _index,
+            children: const [
+              HomeScreen(),
+              AccountScreen(),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded, color: colors.textMuted),
-            selectedIcon: Icon(Icons.person_rounded, color: colors.primary),
-            label: 'Account',
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: _index,
+            animationDuration: const Duration(milliseconds: 220),
+            onDestinationSelected: (i) => setState(() => _index = i),
+            backgroundColor: colors.surface,
+            indicatorColor: colors.primary.withValues(alpha: 0.15),
+            destinations: [
+              NavigationDestination(
+                icon: Icon(Icons.grid_view_rounded, color: colors.textMuted),
+                selectedIcon: Icon(Icons.grid_view_rounded, color: colors.primary),
+                label: 'Home',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_outline_rounded, color: colors.textMuted),
+                selectedIcon: Icon(Icons.person_rounded, color: colors.primary),
+                label: 'Account',
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/motion/iip_motion.dart';
+import '../../core/motion/iip_page_route.dart';
+import '../../core/theme/iip_colors.dart';
 import '../../models/mobile_session.dart';
 import '../auth/auth_controller.dart';
 import 'module_placeholder_screen.dart';
@@ -42,6 +45,10 @@ class HomeScreen extends StatelessWidget {
             )
           : GridView.builder(
               padding: const EdgeInsets.all(16),
+              cacheExtent: IipMotion.scrollCacheExtent,
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 mainAxisSpacing: 12,
@@ -49,15 +56,20 @@ class HomeScreen extends StatelessWidget {
                 childAspectRatio: 0.95,
               ),
               itemCount: widgets.length,
-              itemBuilder: (context, index) => _WidgetTile(widget: widgets[index]),
+              itemBuilder: (context, index) => _WidgetTile(
+                widget: widgets[index],
+                colors: colors,
+              ),
             ),
     );
   }
 }
 
 class _WidgetTile extends StatelessWidget {
-  const _WidgetTile({required this.widget});
+  const _WidgetTile({required this.widget, required this.colors});
+
   final MobileWidgetModel widget;
+  final IipColors colors;
 
   IconData _iconFor(String name) {
     switch (name) {
@@ -86,36 +98,33 @@ class _WidgetTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.watch<AuthController>().colors;
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ModulePlaceholderScreen(widget: widget),
-          ),
-        );
-      },
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(_iconFor(widget.icon), color: colors.primary, size: 28),
-              const Spacer(),
-              Text(
-                widget.label,
-                style: TextStyle(fontWeight: FontWeight.w600, color: colors.text, fontSize: 15),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                widget.description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: colors.textMuted),
-              ),
-            ],
+    return RepaintBoundary(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          context.pushSmooth(ModulePlaceholderScreen(widget: widget));
+        },
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(_iconFor(widget.icon), color: colors.primary, size: 28),
+                const Spacer(),
+                Text(
+                  widget.label,
+                  style: TextStyle(fontWeight: FontWeight.w600, color: colors.text, fontSize: 15),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: colors.textMuted),
+                ),
+              ],
+            ),
           ),
         ),
       ),

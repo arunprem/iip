@@ -59,8 +59,11 @@ class AiNetworkBackground extends StatelessWidget {
         ),
         // Full-screen clustered network (top + behind sign-in button).
         Positioned.fill(
-          child: CustomPaint(
-            painter: _ClusterNetworkPainter(
+          child: RepaintBoundary(
+            child: CustomPaint(
+              isComplex: true,
+              willChange: false,
+              painter: _ClusterNetworkPainter(
               linkColor: isDark
                   ? colors.primary.withValues(alpha: 0.3)
                   : colors.primary.withValues(alpha: 0.24),
@@ -75,6 +78,7 @@ class AiNetworkBackground extends StatelessWidget {
                   : colors.primary.withValues(alpha: 0.55),
             ),
             child: const SizedBox.expand(),
+            ),
           ),
         ),
         // Veil: strong only over form fields; lighter at bottom so mesh shows behind button.
@@ -155,6 +159,35 @@ class _ClusterNetworkPainter extends CustomPainter {
   final Color nodeColor;
   final Color hubColor;
 
+  static final Map<int, _NetworkGraph> _graphBySizeKey = {};
+
+  late final Paint _linkPaint = Paint()
+    ..strokeWidth = 0.95
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  late final Paint _bridgePaint = Paint()
+    ..strokeWidth = 0.75
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  late final Paint _nodeGlowPaint = Paint();
+  late final Paint _nodePaint = Paint();
+  late final Paint _hubGlowPaint = Paint();
+  late final Paint _hubPaint = Paint();
+  late final Paint _hubCorePaint = Paint()
+    ..color = Colors.white.withValues(alpha: 0.85);
+
+  static int _sizeKey(Size size) =>
+      (size.width.round() << 16) | size.height.round();
+
+  void _syncPaints() {
+    _linkPaint.color = linkColor;
+    _bridgePaint.color = bridgeColor;
+    _nodePaint.color = nodeColor;
+    _hubPaint.color = hubColor;
+    _nodeGlowPaint.color = nodeColor.withValues(alpha: 0.15);
+    _hubGlowPaint.color = hubColor.withValues(alpha: 0.18);
+  }
+
   static const _clusterSeeds = <_ClusterSeed>[
     // Upper clusters (header / logo zone)
     _ClusterSeed(0.18, 0.26, 7, 0.13, 11),
@@ -170,45 +203,24 @@ class _ClusterNetworkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final graph = _buildGraph(size);
-    final linkPaint = Paint()
-      ..color = linkColor
-      ..strokeWidth = 0.95
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    final bridgePaint = Paint()
-      ..color = bridgeColor
-      ..strokeWidth = 0.75
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+    _syncPaints();
+    final graph = _graphBySizeKey.putIfAbsent(_sizeKey(size), () => _buildGraph(size));
 
     for (final edge in graph.edges) {
       final a = graph.nodes[edge.from].position;
       final b = graph.nodes[edge.to].position;
-      final paint = edge.isBridge ? bridgePaint : linkPaint;
+      final paint = edge.isBridge ? _bridgePaint : _linkPaint;
       _drawCurvedEdge(canvas, a, b, paint, edge.isBridge);
     }
 
     for (final node in graph.nodes) {
       if (node.isHub) {
-        canvas.drawCircle(
-          node.position,
-          node.radius + 5,
-          Paint()..color = hubColor.withValues(alpha: 0.18),
-        );
-        canvas.drawCircle(node.position, node.radius, Paint()..color = hubColor);
-        canvas.drawCircle(
-          node.position,
-          node.radius * 0.45,
-          Paint()..color = Colors.white.withValues(alpha: 0.85),
-        );
+        canvas.drawCircle(node.position, node.radius + 5, _hubGlowPaint);
+        canvas.drawCircle(node.position, node.radius, _hubPaint);
+        canvas.drawCircle(node.position, node.radius * 0.45, _hubCorePaint);
       } else {
-        canvas.drawCircle(
-          node.position,
-          node.radius + 3,
-          Paint()..color = nodeColor.withValues(alpha: 0.15),
-        );
-        canvas.drawCircle(node.position, node.radius, Paint()..color = nodeColor);
+        canvas.drawCircle(node.position, node.radius + 3, _nodeGlowPaint);
+        canvas.drawCircle(node.position, node.radius, _nodePaint);
       }
     }
   }

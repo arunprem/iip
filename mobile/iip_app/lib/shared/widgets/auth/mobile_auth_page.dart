@@ -14,6 +14,8 @@ class MobileAuthPage extends StatelessWidget {
     this.leading,
     this.trailing,
     this.footer,
+    /// PIN screens: body fills height so digits can sit in the vertical center.
+    this.pinLayout = false,
   });
 
   final IipColors colors;
@@ -22,6 +24,7 @@ class MobileAuthPage extends StatelessWidget {
   final Widget? leading;
   final Widget? trailing;
   final Widget? footer;
+  final bool pinLayout;
 
   @override
   Widget build(BuildContext context) {
@@ -53,18 +56,23 @@ class MobileAuthPage extends StatelessWidget {
                     ),
                   ),
                   Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        return SingleChildScrollView(
-                          physics: const ClampingScrollPhysics(),
-                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                            child: body,
+                    child: pinLayout
+                        ? body
+                        : LayoutBuilder(
+                            builder: (context, constraints) {
+                              return SingleChildScrollView(
+                                physics: const BouncingScrollPhysics(
+                                  parent: ClampingScrollPhysics(),
+                                ),
+                                keyboardDismissBehavior:
+                                    ScrollViewKeyboardDismissBehavior.onDrag,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                                  child: body,
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
                   ),
                   bottom,
                   if (footer != null) ...[

@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import '../../core/motion/iip_motion.dart';
+import '../../core/motion/iip_page_route.dart';
 import '../../shared/widgets/mobile_section.dart';
 import '../auth/auth_controller.dart';
 import 'office_switch_screen.dart';
@@ -98,14 +100,12 @@ class _AccountScreenState extends State<AccountScreen> {
     final rawBytes = await file.readAsBytes();
     if (!mounted) return;
 
-    final cropped = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => ProfilePhotoCropScreen(
-          imageBytes: rawBytes,
-          colors: auth.colors,
-        ),
+    final cropped = await context.pushSmooth<Uint8List>(
+      ProfilePhotoCropScreen(
+        imageBytes: rawBytes,
+        colors: auth.colors,
       ),
+      fullscreenDialog: true,
     );
     if (cropped == null || !mounted) return;
 
@@ -160,6 +160,8 @@ class _AccountScreenState extends State<AccountScreen> {
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        cacheExtent: IipMotion.scrollCacheExtent,
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         children: [
           Container(
             padding: const EdgeInsets.all(20),
@@ -275,9 +277,7 @@ class _AccountScreenState extends State<AccountScreen> {
                 title: 'Edit profile',
                 subtitle: 'Name, email, PEN, department',
                 onTap: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
-                  );
+                  await context.pushSmooth(const ProfileEditScreen());
                   if (mounted) {
                     await auth.loadProfile();
                     await _reloadPhoto(auth);
@@ -290,18 +290,14 @@ class _AccountScreenState extends State<AccountScreen> {
                   icon: Icons.swap_horiz_rounded,
                   title: 'Working unit',
                   subtitle: office?.officeName ?? 'Select unit',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const OfficeSwitchScreen()),
-                  ),
+                  onTap: () => context.pushSmooth(const OfficeSwitchScreen()),
                 ),
               MobileSettingsTile(
                 colors: colors,
                 icon: Icons.settings_outlined,
                 title: 'Settings',
                 subtitle: 'Appearance, password, sign out',
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                ),
+                onTap: () => context.pushSmooth(const SettingsScreen()),
               ),
             ],
           ),

@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'iip_colors.dart';
+import '../motion/iip_page_route.dart';
 
 ThemeData buildIipTheme(IipColors colors, {required bool isDark}) {
   return ThemeData(
     useMaterial3: true,
     brightness: isDark ? Brightness.dark : Brightness.light,
     scaffoldBackgroundColor: colors.bg,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: IipAndroidPageTransitionsBuilder(),
+        TargetPlatform.iOS: IipAndroidPageTransitionsBuilder(),
+      },
+    ),
     colorScheme: ColorScheme(
       brightness: isDark ? Brightness.dark : Brightness.light,
       primary: colors.primary,

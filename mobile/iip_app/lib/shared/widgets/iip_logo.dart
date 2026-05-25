@@ -31,7 +31,7 @@ class IipLogo extends StatelessWidget {
       ),
     );
 
-    if (isDark) {
+    if (isDark && !whiteBackground) {
       image = ColorFiltered(
         colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
         child: image,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/motion/iip_motion.dart';
 import '../../shared/widgets/auth/auth_form_widgets.dart';
 import '../../shared/widgets/auth/mobile_text_field.dart';
 import '../../models/profile_models.dart';
@@ -104,6 +105,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
+        cacheExtent: IipMotion.scrollCacheExtent,
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         children: [
           Form(
             key: _formKey,
