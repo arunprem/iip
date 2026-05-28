@@ -104,7 +104,10 @@ function teardownSocket() {
     s.onmessage = null;
     s.onerror = null;
     s.onclose = null;
-    if (s.readyState === WebSocket.OPEN || s.readyState === WebSocket.CONNECTING) {
+    // Avoid closing CONNECTING sockets: browsers log
+    // "WebSocket is closed before the connection is established."
+    // when close() is called during handshake.
+    if (s.readyState === WebSocket.OPEN) {
       s.close(1000, 'client_disconnect');
     }
   }

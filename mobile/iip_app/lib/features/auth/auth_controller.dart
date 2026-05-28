@@ -169,6 +169,21 @@ class AuthController extends ChangeNotifier {
         e is IOException;
   }
 
+  String _safeErrorMessage(
+    Object error, {
+    String fallback = 'Something went wrong. Please try again.',
+  }) {
+    if (error is ApiException) {
+      final msg = error.message.trim();
+      if (msg.isNotEmpty) return msg;
+      return fallback;
+    }
+    if (_isTransientError(error)) {
+      return 'Cannot connect to server. Check your network and try again.';
+    }
+    return fallback;
+  }
+
   Future<void> _handleBootstrapFailure(Object e) async {
     if (e is ApiException && _isAuthApiError(e)) {
       if (await _tryRefreshTokens()) {
@@ -276,8 +291,11 @@ class AuthController extends ChangeNotifier {
       } else {
         errorMessage = 'Sign-in could not be completed.';
       }
-    } on ApiException catch (e) {
-      errorMessage = e.message;
+    } catch (e) {
+      errorMessage = _safeErrorMessage(
+        e,
+        fallback: 'Sign-in failed. Please try again.',
+      );
     } finally {
       isBusy = false;
       notifyListeners();
@@ -312,8 +330,11 @@ class AuthController extends ChangeNotifier {
       } else {
         errorMessage = 'Invalid authentication code.';
       }
-    } on ApiException catch (e) {
-      errorMessage = e.message;
+    } catch (e) {
+      errorMessage = _safeErrorMessage(
+        e,
+        fallback: 'Verification failed. Please try again.',
+      );
     } finally {
       isBusy = false;
       notifyListeners();
@@ -340,8 +361,11 @@ class AuthController extends ChangeNotifier {
       _api.setOfficeId(officeId);
       await _storage.saveOfficeId(officeId);
       await _afterOfficeSelected();
-    } on ApiException catch (e) {
-      errorMessage = e.message;
+    } catch (e) {
+      errorMessage = _safeErrorMessage(
+        e,
+        fallback: 'Could not switch unit. Please try again.',
+      );
       rethrow;
     } finally {
       isBusy = false;
@@ -386,12 +410,31 @@ class AuthController extends ChangeNotifier {
   Future<void> _enterAuthenticated({required bool loadProfile}) async {
     try {
       await _apiWithRefresh(_loadSession);
+    } on ApiException catch (e) {
+      if (_isAuthApiError(e)) {
+        await _clearSessionToLogin(
+          e.message.isNotEmpty ? e.message : 'Session expired. Please sign in again.',
+        );
+        return;
+      }
+      status = AuthStatus.needsDeviceUnlock;
+      errorMessage = 'Network unavailable. Check connection and try again.';
+      return;
     } catch (_) {
-      colors = isDark ? IipColors.dark : IipColors.light;
+      status = AuthStatus.needsDeviceUnlock;
+      errorMessage = 'Network unavailable. Check connection and try again.';
+      return;
     }
     if (profile == null && user == null) {
       try {
         await _apiWithRefresh(_fetchUser);
+      } on ApiException catch (e) {
+        if (_isAuthApiError(e)) {
+          await _clearSessionToLogin(
+            e.message.isNotEmpty ? e.message : 'Session expired. Please sign in again.',
+          );
+          return;
+        }
       } catch (_) {}
     }
     if (loadProfile) {
@@ -468,8 +511,11 @@ class AuthController extends ChangeNotifier {
       await _fetchUser();
       notifyListeners();
       return profile!;
-    } on ApiException catch (e) {
-      errorMessage = e.message;
+    } catch (e) {
+      errorMessage = _safeErrorMessage(
+        e,
+        fallback: 'Could not update profile. Please try again.',
+      );
       rethrow;
     }
   }
@@ -484,8 +530,11 @@ class AuthController extends ChangeNotifier {
         'current_password': currentPassword,
         'new_password': newPassword,
       });
-    } on ApiException catch (e) {
-      errorMessage = e.message;
+    } catch (e) {
+      errorMessage = _safeErrorMessage(
+        e,
+        fallback: 'Could not change password. Please try again.',
+      );
       rethrow;
     }
   }
@@ -510,8 +559,11 @@ class AuthController extends ChangeNotifier {
       await _fetchUser();
       notifyListeners();
       return profile!;
-    } on ApiException catch (e) {
-      errorMessage = e.message;
+    } catch (e) {
+      errorMessage = _safeErrorMessage(
+        e,
+        fallback: 'Could not upload profile photo. Please try again.',
+      );
       rethrow;
     }
   }

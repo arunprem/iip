@@ -66,11 +66,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profile updated.'), behavior: SnackBarBehavior.floating),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(auth.errorMessage ?? e.toString()),
+          content: Text(auth.errorMessage ?? 'Something went wrong. Please try again.'),
           behavior: SnackBarBehavior.floating,
         ),
       );

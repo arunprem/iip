@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Smartphone } from 'lucide-react';
+import { ArrowLeft, Smartphone } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import {
   createMobileWidget,
@@ -91,6 +92,15 @@ export default function MobileWidgetManagement() {
       title="Mobile app widgets"
       description="Enable or disable modules on the IIP mobile app. Users only see widgets they have privileges for; disabling here hides a module for everyone."
       icon={Smartphone}
+      actions={
+        <Link
+          to="/system/configuration"
+          className="btn btn-secondary btn-sm inline-flex items-center gap-1.5"
+        >
+          <ArrowLeft size={14} aria-hidden />
+          System configuration
+        </Link>
+      }
     >
       {isError && (
         <div className="dashboard-card max-w-3xl p-4 mb-4 text-sm text-red-600 dark:text-red-400">

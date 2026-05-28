@@ -73,6 +73,18 @@ class _DeviceLockUnlockScreenState extends State<DeviceLockUnlockScreen> {
     if (!mounted) return;
     if (outcome == BiometricAuthOutcome.success) {
       await auth.completeDeviceUnlock();
+      if (!mounted) return;
+      if (auth.status != AuthStatus.authenticated) {
+        final msg = auth.errorMessage ?? 'Could not unlock. Please sign in again.';
+        setState(() {
+          _busy = false;
+          _error = msg;
+          _showPin = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+        );
+      }
       return;
     }
     setState(() {
@@ -97,6 +109,18 @@ class _DeviceLockUnlockScreenState extends State<DeviceLockUnlockScreen> {
     if (!mounted) return;
     if (ok) {
       await auth.completeDeviceUnlock();
+      if (!mounted) return;
+      if (auth.status != AuthStatus.authenticated) {
+        final msg = auth.errorMessage ?? 'Could not unlock. Please sign in again.';
+        setState(() {
+          _busy = false;
+          _error = msg;
+        });
+        _pinKey.currentState?.clear();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+        );
+      }
     } else {
       setState(() {
         _busy = false;

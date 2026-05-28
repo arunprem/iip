@@ -26,7 +26,7 @@ class SplashScreen extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Spacer(flex: 2),
-                      const IipLogo(size: 112, whiteBackground: true),
+                      const IipLogo(size: 112, whiteBackground: false),
                       const SizedBox(height: 20),
                       Text(
                         'IIP',

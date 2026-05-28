@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS iam.mobile_widgets (
 CREATE INDEX IF NOT EXISTS idx_mobile_widgets_active_sort
     ON iam.mobile_widgets (is_active, sort_order);
 
--- Admin menu under System Management
+-- Sidebar menu (deactivated in 017 — use System configuration → Mobile App Widgets)
 INSERT INTO iam.menus (menu_key, label, path, icon, section, sort_order, privilege_id, is_group, parent_id)
 VALUES (
     'mobile-widget-management',

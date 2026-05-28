@@ -36,7 +36,10 @@ class _LoginScreenState extends State<LoginScreen> {
     _loadCaptcha();
   }
 
-  Future<void> _loadCaptcha() async {
+  Future<void> _loadCaptcha({bool clearInput = true}) async {
+    if (clearInput) {
+      _captcha.clear();
+    }
     setState(() => _loadingCaptcha = true);
     try {
       final auth = context.read<AuthController>();
@@ -64,19 +67,29 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _submit(AuthController auth) {
+  Future<void> _submit(AuthController auth) async {
     final valid = _formKey.currentState?.validate() ?? false;
     if (!valid) {
       setState(() => _validateOnChange = true);
       return;
     }
     FocusScope.of(context).unfocus();
-    auth.login(
+    await auth.login(
       username: _pen.text.trim(),
       password: _password.text,
       captchaId: _captchaId,
       captchaCode: _captcha.text.trim(),
     );
+    if (!mounted) return;
+
+    // On failed username/password or invalid captcha, always fetch a fresh captcha.
+    final failedSignIn =
+        auth.mfaToken == null && auth.status == AuthStatus.unauthenticated;
+    if (failedSignIn) {
+      await _loadCaptcha();
+      if (!mounted) return;
+      _captchaFocus.requestFocus();
+    }
   }
 
   @override

@@ -22,6 +22,7 @@ import {
   type LoginFormValues,
 } from '../utils/loginValidation';
 import { IipLogo } from '../components/IipLogo';
+import { ClusterNetworkBackground } from '../components/auth/ClusterNetworkBackground';
 import {
   ShieldAlert,
   Lock,
@@ -30,28 +31,8 @@ import {
   Moon,
   RefreshCw,
   ArrowRight,
+  Network,
 } from 'lucide-react';
-
-function GridPattern() {
-  return (
-    <svg
-      className="absolute inset-0 h-full w-full opacity-[0.07]"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <defs>
-        <pattern id="login-grid" width="32" height="32" patternUnits="userSpaceOnUse">
-          <path
-            d="M 32 0 L 0 0 0 32"
-            fill="none"
-            stroke="white"
-            strokeWidth="0.5"
-          />
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" fill="url(#login-grid)" />
-    </svg>
-  );
-}
 
 function FieldFeedback({
   show,
@@ -234,27 +215,44 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex w-full bg-iip-bg">
-      {/* Left — hero / branding */}
-      <div className="relative hidden md:flex md:w-[58%] lg:w-[60%] overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
-        <GridPattern />
+      {/* Left — hero with clustered network graph (matches mobile auth) */}
+      <div className="relative hidden md:flex md:w-[58%] lg:w-[60%] overflow-hidden bg-gradient-to-br from-[#030712] via-slate-950 to-blue-950">
+        <ClusterNetworkBackground />
 
-        <div className="absolute top-0 right-0 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
+        <div className="absolute top-0 right-0 w-72 h-72 bg-blue-500/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-cyan-400/12 rounded-full blur-3xl pointer-events-none" />
+        <div
+          className="absolute inset-0 pointer-events-none bg-gradient-to-b from-slate-950/20 via-transparent to-slate-950/50"
+          aria-hidden
+        />
 
         <div className="relative z-10 flex flex-col justify-between h-full p-10 lg:p-14">
           <div className="flex items-center gap-3">
-            <IipLogo size="md" whiteBackground />
+            <IipLogo size="md" whiteBackground className="drop-shadow-lg" />
             <div>
               <p className="text-white font-bold text-lg tracking-tight">IIP</p>
               <p className="text-blue-200/80 text-xs font-medium tracking-wide">
-                Kerala Police
+                Kerala Police · CCTNS Division
               </p>
             </div>
           </div>
 
-          <p className="max-w-md text-slate-300/90 text-sm lg:text-base leading-relaxed">
-            Secure access for authorized Kerala Police personnel. All sessions are
-            monitored and audited.
+          <div className="flex-1 flex flex-col items-center justify-center py-8 pointer-events-none">
+            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm px-6 py-5 text-center max-w-sm shadow-xl shadow-blue-950/40">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-sky-500/20 text-sky-300">
+                <Network size={26} strokeWidth={1.75} />
+              </div>
+              <p className="text-white/95 font-semibold text-base tracking-tight">
+                Intelligence-led policing
+              </p>
+              <p className="text-slate-400 text-sm mt-2 leading-relaxed">
+                Connected units, shared context, and secure access across the platform.
+              </p>
+            </div>
+          </div>
+
+          <p className="max-w-md text-slate-400/90 text-sm leading-relaxed">
+            Secure sign-in for authorized personnel. All sessions are monitored and audited.
           </p>
         </div>
       </div>

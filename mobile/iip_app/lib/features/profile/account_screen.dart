@@ -122,11 +122,11 @@ class _AccountScreenState extends State<AccountScreen> {
           const SnackBar(content: Text('Profile photo updated.'), behavior: SnackBarBehavior.floating),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(auth.errorMessage ?? e.toString()),
+            content: Text(auth.errorMessage ?? 'Something went wrong. Please try again.'),
             behavior: SnackBarBehavior.floating,
           ),
         );

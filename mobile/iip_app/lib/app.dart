@@ -22,6 +22,8 @@ class IipApp extends StatefulWidget {
 
 class _IipAppState extends State<IipApp> {
   bool _nativeSplashRemoved = false;
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  String? _lastShownToastMessage;
 
   void _removeNativeSplashOnce() {
     if (_nativeSplashRemoved) return;
@@ -32,14 +34,50 @@ class _IipAppState extends State<IipApp> {
     });
   }
 
+  bool _isConnectionError(String message) {
+    final m = message.toLowerCase();
+    return m.contains('cannot reach server') ||
+        m.contains('network unavailable') ||
+        m.contains('connection') ||
+        m.contains('timeout') ||
+        m.contains('request failed');
+  }
+
+  void _maybeShowNetworkToast(String? message) {
+    if (message == null || message.isEmpty) {
+      _lastShownToastMessage = null;
+      return;
+    }
+    if (!_isConnectionError(message)) return;
+    if (_lastShownToastMessage == message) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final messenger = _messengerKey.currentState;
+      if (messenger == null) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(message),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      _lastShownToastMessage = message;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<AuthController>(
       builder: (context, auth, _) {
         _removeNativeSplashOnce();
+        _maybeShowNetworkToast(auth.errorMessage);
 
         return MaterialApp(
           key: ValueKey('session-${auth.appSessionGeneration}'),
+          scaffoldMessengerKey: _messengerKey,
           title: 'IIP Mobile',
           debugShowCheckedModeBanner: false,
           scrollBehavior: const IipScrollBehavior(),
