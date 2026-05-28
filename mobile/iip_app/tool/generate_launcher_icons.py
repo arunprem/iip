@@ -6,15 +6,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
-LOGO = ROOT / "assets/images/kerala_police_logo_opaque.png"
+LOGO = ROOT / "assets/images/kerala_police_logo.png"
 ANDROID_RES = ROOT / "android/app/src/main/res"
 IOS_ICONSET = ROOT / "ios/Runner/Assets.xcassets/AppIcon.appiconset"
 
-# IIP primary blue — used if logo has transparency at edges
-BACKGROUND = (255, 255, 255, 255)
+# Match splash look: dark base with full-color logo
+BACKGROUND = (9, 9, 11, 255)
 
 
 def load_logo() -> Image.Image:
@@ -22,29 +22,46 @@ def load_logo() -> Image.Image:
     return img
 
 
-def fit_on_square(logo: Image.Image, size: int, padding_ratio: float = 0.12) -> Image.Image:
-    canvas = Image.new("RGBA", (size, size), BACKGROUND)
-    inner = int(size * (1 - 2 * padding_ratio))
+def _brand_mark(logo: Image.Image, size: int, mark_ratio: float = 0.74) -> Image.Image:
+    """White circular badge + full-color emblem for high launcher contrast."""
+    mark = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    badge_size = int(size * mark_ratio)
+    bx = (size - badge_size) // 2
+    by = (size - badge_size) // 2
+
+    badge = Image.new("RGBA", (badge_size, badge_size), (0, 0, 0, 0))
+    mask = Image.new("L", (badge_size, badge_size), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.ellipse((0, 0, badge_size - 1, badge_size - 1), fill=255)
+    badge.paste((255, 255, 255, 255), (0, 0), mask)
+    mark.paste(badge, (bx, by), badge)
+
+    inner = int(badge_size * 0.62)
     w, h = logo.size
     scale = min(inner / w, inner / h)
     nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
     resized = logo.resize((nw, nh), Image.Resampling.LANCZOS)
-    x = (size - nw) // 2
-    y = (size - nh) // 2
-    canvas.paste(resized, (x, y), resized)
+    lx = (size - nw) // 2
+    ly = (size - nh) // 2
+    mark.paste(resized, (lx, ly), resized)
+    return mark
+
+
+def fit_on_square(logo: Image.Image, size: int, padding_ratio: float = 0.14) -> Image.Image:
+    canvas = Image.new("RGBA", (size, size), BACKGROUND)
+    mark = _brand_mark(logo, int(size * (1 - 2 * padding_ratio)))
+    x = (size - mark.size[0]) // 2
+    y = (size - mark.size[1]) // 2
+    canvas.paste(mark, (x, y), mark)
     return canvas
 
 
-def fit_foreground(logo: Image.Image, size: int, padding_ratio: float = 0.18) -> Image.Image:
+def fit_foreground(logo: Image.Image, size: int, padding_ratio: float = 0.16) -> Image.Image:
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    inner = int(size * (1 - 2 * padding_ratio))
-    w, h = logo.size
-    scale = min(inner / w, inner / h)
-    nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
-    resized = logo.resize((nw, nh), Image.Resampling.LANCZOS)
-    x = (size - nw) // 2
-    y = (size - nh) // 2
-    canvas.paste(resized, (x, y), resized)
+    mark = _brand_mark(logo, int(size * (1 - 2 * padding_ratio)))
+    x = (size - mark.size[0]) // 2
+    y = (size - mark.size[1]) // 2
+    canvas.paste(mark, (x, y), mark)
     return canvas
 
 
@@ -87,7 +104,7 @@ def android_icons(logo: Image.Image, fg: Image.Image) -> None:
     colors_path.write_text(
         """<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <color name="ic_launcher_background">#09090B</color>
 </resources>
 """,
         encoding="utf-8",
