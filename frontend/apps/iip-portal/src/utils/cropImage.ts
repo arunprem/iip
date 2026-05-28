@@ -25,16 +25,24 @@ export function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-/** Render a square JPEG blob from the cropped region (for profile upload). */
+export type CroppedImageOutput = {
+  width?: number;
+  height?: number;
+};
+
+/** Render a JPEG blob from the cropped region. */
 export async function getCroppedImageBlob(
   imageSrc: string,
   pixelCrop: Area,
-  outputSize = 400
+  output: number | CroppedImageOutput = 400
 ): Promise<Blob> {
   const image = await createImage(imageSrc);
+  const opts = typeof output === 'number' ? { width: output, height: output } : output;
+  const outW = opts.width ?? 400;
+  const outH = opts.height ?? opts.width ?? 400;
   const canvas = document.createElement('canvas');
-  canvas.width = outputSize;
-  canvas.height = outputSize;
+  canvas.width = outW;
+  canvas.height = outH;
   const ctx = canvas.getContext('2d');
   if (!ctx) {
     throw new Error('Could not prepare image canvas.');
@@ -48,8 +56,8 @@ export async function getCroppedImageBlob(
     pixelCrop.height,
     0,
     0,
-    outputSize,
-    outputSize
+    outW,
+    outH
   );
 
   return new Promise((resolve, reject) => {

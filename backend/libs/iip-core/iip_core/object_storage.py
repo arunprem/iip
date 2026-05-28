@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 
 PROFILE_PHOTOS_PREFIX = "profile-photos"
 DOCUMENTS_PREFIX = "documents"
+SUSPECT_PHOTOS_PREFIX = "suspect-photos"
 
 
 def profile_photo_object_key(user_id: str | uuid.UUID, extension: str) -> str:
@@ -32,6 +33,21 @@ def profile_photo_prefix(user_id: str | uuid.UUID) -> str:
     return f"{PROFILE_PHOTOS_PREFIX}/{user_id}/"
 
 
+def suspect_photo_draft_prefix(dossier_draft_id: str) -> str:
+    """Prefix for all objects belonging to one dossier draft session."""
+    return f"{SUSPECT_PHOTOS_PREFIX}/{dossier_draft_id}/"
+
+
+def suspect_photo_object_key(
+    dossier_draft_id: str,
+    photo_id: str,
+    extension: str,
+) -> str:
+    """suspect-photos/{dossier_draft_id}/{photo_id}.jpg"""
+    ext = extension if extension.startswith(".") else f".{extension}"
+    return f"{SUSPECT_PHOTOS_PREFIX}/{dossier_draft_id}/{photo_id}{ext}"
+
+
 def document_object_key(domain: str, entity_id: str, file_id: str, filename: str) -> str:
     """documents/{domain}/{entity_id}/{file_id}-{filename}"""
     safe = re.sub(r"[^\w.\-]+", "_", filename).strip("._") or "file"
@@ -41,8 +57,10 @@ def document_object_key(domain: str, entity_id: str, file_id: str, filename: str
 def is_object_storage_key(stored_path: str | None) -> bool:
     if not stored_path:
         return False
-    return stored_path.startswith(f"{PROFILE_PHOTOS_PREFIX}/") or stored_path.startswith(
-        f"{DOCUMENTS_PREFIX}/"
+    return (
+        stored_path.startswith(f"{PROFILE_PHOTOS_PREFIX}/")
+        or stored_path.startswith(f"{DOCUMENTS_PREFIX}/")
+        or stored_path.startswith(f"{SUSPECT_PHOTOS_PREFIX}/")
     )
 
 

@@ -9,6 +9,7 @@ trace information for correlation in audit logs.
 from __future__ import annotations
 
 from enum import StrEnum
+import numbers
 from typing import Any
 
 from fastapi import Request
@@ -118,6 +119,19 @@ class JITElevationRequiredError(IIPException):
 # ─── FastAPI Exception Handler ─────────────────────────────────────────────────
 
 
+def _json_safe(value: Any) -> Any:
+    """Coerce numpy scalars and nested structures for JSONResponse."""
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, numbers.Real):
+        return float(value)
+    return value
+
+
 async def iip_exception_handler(request: Request, exc: IIPException) -> JSONResponse:
     """Register with FastAPI app to return structured API error responses."""
     return JSONResponse(
@@ -126,7 +140,7 @@ async def iip_exception_handler(request: Request, exc: IIPException) -> JSONResp
             error=APIError(
                 error_code=exc.error_code,
                 detail=exc.detail,
-                meta=exc.meta,
+                meta=_json_safe(exc.meta) if exc.meta else None,
             ),
             request_id=request.headers.get("X-Request-ID"),
         ).model_dump(),

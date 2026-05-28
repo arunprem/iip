@@ -1,0 +1,47 @@
+"""ML Gateway service settings."""
+
+from __future__ import annotations
+
+from functools import lru_cache
+
+from pydantic import Field
+
+from iip_core.settings import BaseServiceSettings
+
+
+class MlGatewaySettings(BaseServiceSettings):
+    service_name: str = "ml-gateway-svc"
+
+    elasticsearch_url: str = Field(
+        default="http://localhost:9200",
+        description="Elasticsearch cluster URL for face vectors and RAG indices",
+    )
+    elasticsearch_enabled: bool = Field(
+        default=True,
+        description="When false, face indexing and duplicate search are skipped",
+    )
+
+    face_index_name: str = Field(default="iip-suspect-faces")
+    face_embedding_dims: int = Field(default=512, description="Facenet512 output size")
+    face_model_name: str = Field(default="Facenet512")
+    face_detector_backend: str = Field(default="retinaface")
+    face_match_min_score: float = Field(
+        default=0.72,
+        description="Minimum Elasticsearch kNN score to treat as a duplicate (cosine)",
+    )
+    face_duplicate_search_k: int = Field(default=5)
+    face_max_upload_bytes: int = Field(default=8 * 1024 * 1024)
+    face_analysis_timeout_seconds: int = Field(
+        default=300,
+        description="Max seconds per photo analysis (models should be pre-warmed at startup)",
+    )
+    face_warmup_on_startup: bool = Field(
+        default=True,
+        description="Load DeepFace/RetinaFace weights when ml-gateway starts (one-time per process)",
+    )
+    suspect_photos_prefix: str = Field(default="suspect-photos")
+
+
+@lru_cache(maxsize=1)
+def get_ml_settings() -> MlGatewaySettings:
+    return MlGatewaySettings()

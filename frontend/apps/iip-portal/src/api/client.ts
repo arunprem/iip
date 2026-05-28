@@ -21,6 +21,9 @@ const SILENT_PATH_PREFIXES = [
   '/auth/me/profile',
   '/auth/me/photo',
   '/captcha',
+  '/ml/faces',
+  '/ml/faces/ping',
+  '/ml/faces/status',
 ];
 
 const AUTH_MUTATION_PATHS = ['/auth/login', '/auth/unlock', '/auth/refresh', '/auth/mfa'];

@@ -10,6 +10,7 @@ Orchestrates:
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -21,13 +22,16 @@ from prometheus_client import make_asgi_app
 from iip_core.db import close_db, init_db
 from iip_core.errors import IIPException, iip_exception_handler
 from iip_core.logging import configure_logging, get_logger
-from iip_core.settings import BaseServiceSettings
-
 from .routers import chat as chat_router
+from .routers import faces as faces_router
 from .routers import health as health_router
 from .routers import rag as rag_router
+from .services.face_index import FaceIndexService
+from .services.face_pipeline import warmup_face_models
+from .settings import get_ml_settings
 
-settings = BaseServiceSettings(service_name="ml-gateway-svc")
+settings = get_ml_settings()
+_face_index = FaceIndexService()
 logger = get_logger(__name__)
 
 
@@ -40,7 +44,38 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     logger.info("ml-gateway-svc starting", llm_endpoint="http://standalone-llm.runai-team-arun.keralapolice.gov.in")
     init_db(settings)
+    try:
+        await _face_index.ensure_index()
+    except Exception as exc:
+        logger.warning("face_index_bootstrap_failed", error=str(exc))
+
+    warmup_task: asyncio.Task[None] | None = None
+
+    if settings.face_warmup_on_startup:
+
+        async def _run_warmup() -> None:
+            logger.info("face_models_warmup_starting")
+            try:
+                await asyncio.to_thread(
+                    warmup_face_models,
+                    model_name=settings.face_model_name,
+                    detector_backend=settings.face_detector_backend,
+                )
+                logger.info("face_models_warmup_complete")
+            except Exception as exc:
+                logger.warning("face_models_warmup_startup_failed", error=str(exc))
+
+        warmup_task = asyncio.create_task(_run_warmup())
+
     yield
+
+    if warmup_task is not None and not warmup_task.done():
+        warmup_task.cancel()
+        try:
+            await warmup_task
+        except asyncio.CancelledError:
+            pass
+    await _face_index.close()
     await close_db()
     logger.info("ml-gateway-svc shutdown complete")
 
@@ -59,7 +94,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=["http://localhost:3000"],
         allow_credentials=True,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     )
 
@@ -71,6 +106,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router.router, tags=["health"])
     app.include_router(chat_router.router, prefix="/api/v1/ml/chat", tags=["chat"])
     app.include_router(rag_router.router, prefix="/api/v1/ml/rag", tags=["rag"])
+    app.include_router(faces_router.router, prefix="/api/v1/ml/faces", tags=["faces"])
 
     FastAPIInstrumentor.instrument_app(app)
 

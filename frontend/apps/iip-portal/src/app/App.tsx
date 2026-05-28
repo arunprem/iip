@@ -40,6 +40,8 @@ const SystemConfiguration = React.lazy(() => import('../pages/system/SystemConfi
 const SecuritySettings   = React.lazy(() => import('../pages/system/SecuritySettings'))
 const MobileWidgetManagement = React.lazy(() => import('../pages/system/MobileWidgetManagement'))
 const UnauthorizedPage   = React.lazy(() => import('../pages/UnauthorizedPage'))
+const SuspectDossierList = React.lazy(() => import('../pages/suspects/SuspectDossierList'))
+const SuspectDossierCreate = React.lazy(() => import('../pages/suspects/SuspectDossierCreate'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -191,6 +193,8 @@ const AuthenticatedLayout = () => {
                 <Route path="/hotspot-console" element={<HotspotConsole />} />
                 <Route path="/kg-canvas" element={<KGCanvas />} />
                 <Route path="/humint-vault" element={<HumintVault />} />
+                <Route path="/suspects" element={<SuspectDossierList />} />
+                <Route path="/suspects/new" element={<SuspectDossierCreate />} />
                 <Route path="/iam-admin" element={<IAMAdmin />} />
                 <Route
                   path="/system/roles"
