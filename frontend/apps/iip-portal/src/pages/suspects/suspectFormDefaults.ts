@@ -109,6 +109,10 @@ export function emptyAddress(): SuspectAddress {
   };
 }
 
+export function emptyPresentAddress(): SuspectAddress {
+  return { ...emptyAddress(), isPermanent: false };
+}
+
 export function emptyDossierDraft(): SuspectDossierDraft {
   return {
     dossierDraftId: newDraftId(),
@@ -124,9 +128,12 @@ export function emptyDossierDraft(): SuspectDossierDraft {
     religion: '',
     category: '',
     address: emptyAddress(),
+    presentAddress: emptyPresentAddress(),
+    hasDifferentPresentAddress: false,
     contacts: [],
     socialAccounts: [],
     relatives: [],
+    linkDecision: null,
     updatedAt: new Date().toISOString(),
   };
 }

@@ -53,6 +53,7 @@ class UserProfile {
     required this.fullName,
     required this.offices,
     this.defaultOfficeId,
+    this.profilePhotoUrl,
   });
 
   final String userId;
@@ -60,6 +61,10 @@ class UserProfile {
   final String fullName;
   final List<OfficeAssignment> offices;
   final String? defaultOfficeId;
+  final String? profilePhotoUrl;
+
+  bool get hasProfilePhoto =>
+      profilePhotoUrl != null && profilePhotoUrl!.isNotEmpty;
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     final officesJson = json['offices'] as List<dynamic>? ?? [];
@@ -68,6 +73,7 @@ class UserProfile {
       username: json['username'] as String,
       fullName: json['full_name'] as String? ?? json['username'] as String,
       defaultOfficeId: json['default_office_id'] as String?,
+      profilePhotoUrl: json['profile_photo_url'] as String?,
       offices: officesJson
           .map((e) => OfficeAssignment.fromJson(e as Map<String, dynamic>))
           .toList(),

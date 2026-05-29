@@ -11,11 +11,13 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
+from PIL import Image, ImageOps
 
 from iip_core.logging import get_logger
 
@@ -77,6 +79,28 @@ class FaceAnalysisResult:
     embedding: list[float]
     facial_area: dict[str, int] | None
     yaw_offset: float | None = None
+
+
+@dataclass
+class FaceInFrameResult:
+    """One detected face in a multi-face field scan."""
+
+    face_index: int
+    x: int
+    y: int
+    w: int
+    h: int
+    detected_pose: str
+    embedding: list[float]
+    quality_score: float
+    yaw_offset: float | None = None
+
+
+@dataclass
+class MultiFaceAnalysisResult:
+    image_width: int
+    image_height: int
+    faces: list[FaceInFrameResult]
 
 
 @dataclass
@@ -157,6 +181,29 @@ def _parse_facial_area(face_obj: dict[str, Any]) -> tuple[int, int, int, int]:
         )
     x, y, w, h = area
     return int(x), int(y), int(w), int(h)
+
+
+def _downscale_bgr(bgr: np.ndarray, max_side: int) -> tuple[np.ndarray, float]:
+    """Return a smaller copy for faster detection; scale maps small coords → original."""
+    h, w = bgr.shape[:2]
+    longest = max(h, w)
+    if longest <= max_side:
+        return bgr, 1.0
+    scale = max_side / float(longest)
+    new_w = max(1, int(w * scale))
+    new_h = max(1, int(h * scale))
+    small = cv2.resize(bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    return small, scale
+
+
+def _load_bgr_from_bytes(image_bytes: bytes) -> tuple[np.ndarray, int, int]:
+    """Load image upright (EXIF) as BGR — matches how the phone displays the capture."""
+    pil = Image.open(BytesIO(image_bytes))
+    pil = ImageOps.exif_transpose(pil)
+    rgb = np.array(pil.convert("RGB"))
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    img_h, img_w = bgr.shape[:2]
+    return bgr, img_w, img_h
 
 
 def _warm_detector(DeepFace: Any, detector_backend: str) -> None:
@@ -337,6 +384,106 @@ def _pose_consistent(declared: str, detected: str) -> bool:
     if declared == POSE_FRONT and detected == POSE_OTHER:
         return False
     return declared == POSE_OTHER or detected == POSE_OTHER
+
+
+def _face_quality_score(
+    w: int,
+    h: int,
+    img_w: int,
+    img_h: int,
+    yaw_offset: float | None,
+) -> float:
+    if img_w <= 0 or img_h <= 0 or w <= 0 or h <= 0:
+        return 0.0
+    area_ratio = min(1.0, (w * h) / float(img_w * img_h) * 4.0)
+    yaw_penalty = 1.0
+    if yaw_offset is not None and abs(yaw_offset) > FRONT_YAW_ACCEPT_THRESHOLD:
+        yaw_penalty = 0.65
+    return area_ratio * yaw_penalty
+
+
+def analyze_all_faces_bytes(
+    image_bytes: bytes,
+    *,
+    model_name: str = "Facenet512",
+    detector_backend: str = "retinaface",
+    max_faces: int = 8,
+    max_side: int | None = None,
+) -> MultiFaceAnalysisResult:
+    """Detect every face in a frame, extract embeddings (for live multi-face FRS)."""
+    if not _models_ready:
+        if _models_warmup_in_progress:
+            wait_for_models_ready()
+        else:
+            warmup_face_models(model_name=model_name, detector_backend=detector_backend)
+
+    DeepFace, RetinaFace = _load_deepface()
+    _get_or_build_model(DeepFace, model_name)
+
+    try:
+        img_bgr, img_w, img_h = _load_bgr_from_bytes(image_bytes)
+        detect_bgr = img_bgr
+        coord_scale = 1.0
+        if max_side is not None and max_side > 0:
+            detect_bgr, scale = _downscale_bgr(img_bgr, max_side)
+            coord_scale = 1.0 / scale if scale < 1.0 else 1.0
+
+        detections: dict[str, Any] = RetinaFace.detect_faces(detect_bgr) or {}
+        if not detections:
+            return MultiFaceAnalysisResult(image_width=img_w, image_height=img_h, faces=[])
+
+        ranked: list[tuple[float, str, dict[str, Any]]] = []
+        for key, face_obj in detections.items():
+            x, y, w, h = _parse_facial_area(face_obj)
+            if coord_scale != 1.0:
+                x = int(x * coord_scale)
+                y = int(y * coord_scale)
+                w = int(w * coord_scale)
+                h = int(h * coord_scale)
+            landmarks = face_obj.get("landmarks") or {}
+            _, yaw_offset = estimate_pose_from_landmarks(landmarks)
+            quality = _face_quality_score(w, h, img_w, img_h, yaw_offset)
+            ranked.append((quality, str(key), face_obj, x, y, w, h))
+        ranked.sort(key=lambda t: t[0], reverse=True)
+
+        faces_out: list[FaceInFrameResult] = []
+        for idx, (quality, _key, face_obj, x, y, w, h) in enumerate(ranked[:max_faces]):
+            landmarks = face_obj.get("landmarks") or {}
+            detected_pose, yaw_offset = estimate_pose_from_landmarks(landmarks)
+            crop = img_bgr[y : y + h, x : x + w]
+            if crop.size == 0:
+                continue
+            representations = DeepFace.represent(
+                img_path=crop,
+                model_name=model_name,
+                detector_backend="skip",
+                enforce_detection=False,
+                align=True,
+            )
+            if not representations:
+                continue
+            rep = representations[0]
+            embedding = normalize_embedding(list(rep["embedding"]))
+            faces_out.append(
+                FaceInFrameResult(
+                    face_index=idx,
+                    x=x,
+                    y=y,
+                    w=w,
+                    h=h,
+                    detected_pose=detected_pose,
+                    embedding=embedding,
+                    quality_score=quality,
+                    yaw_offset=yaw_offset,
+                )
+            )
+
+        return MultiFaceAnalysisResult(image_width=img_w, image_height=img_h, faces=faces_out)
+    except FacePipelineError:
+        raise
+    except Exception as exc:
+        logger.exception("face_multi_analysis_error")
+        raise FacePipelineError("face_analysis_failed", str(exc)) from exc
 
 
 def analyze_image_bytes(

@@ -39,6 +39,12 @@ class MlGatewaySettings(BaseServiceSettings):
         default=True,
         description="Load DeepFace/RetinaFace weights when ml-gateway starts (one-time per process)",
     )
+    face_live_max_side: int = Field(
+        default=640,
+        description="Longest image side for live FRS detection (smaller = faster)",
+    )
+    face_live_max_faces: int = Field(default=4, description="Max faces per live scan frame")
+    face_live_search_k: int = Field(default=1, description="kNN hits per face for live FRS")
     suspect_photos_prefix: str = Field(default="suspect-photos")
 
 

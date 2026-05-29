@@ -5,7 +5,9 @@ Keycloak OIDC integration — token grants and JWT validation (JWKS).
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Literal
+
+AuthClientType = Literal["web", "mobile"]
 
 import httpx
 from fastapi import HTTPException, status
@@ -21,6 +23,25 @@ _JWKS_TTL_SECONDS = 300
 
 class KeycloakAuthError(Exception):
     """Raised when Keycloak rejects credentials or token exchange fails."""
+
+
+def normalize_auth_client_type(value: str | None) -> AuthClientType:
+    if value and value.strip().lower() == "mobile":
+        return "mobile"
+    return "web"
+
+
+def allowed_keycloak_client_ids(settings: BaseServiceSettings) -> frozenset[str]:
+    return frozenset({settings.keycloak_client_id, settings.keycloak_mobile_client_id})
+
+
+def keycloak_client_credentials(
+    settings: BaseServiceSettings,
+    client_type: AuthClientType,
+) -> tuple[str, str]:
+    if client_type == "mobile":
+        return settings.keycloak_mobile_client_id, settings.keycloak_mobile_client_secret
+    return settings.keycloak_client_id, settings.keycloak_client_secret
 
 
 def _realm_base(settings: BaseServiceSettings) -> str:
@@ -131,7 +152,7 @@ async def decode_keycloak_access_token(
         )
 
     azp = claims.get("azp") or claims.get("client_id")
-    if azp and azp != settings.keycloak_client_id:
+    if azp and azp not in allowed_keycloak_client_ids(settings):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired authentication token.",
@@ -145,15 +166,19 @@ async def keycloak_password_grant(
     username: str,
     password: str,
     settings: BaseServiceSettings,
+    *,
+    client_type: AuthClientType = "web",
 ) -> dict[str, Any]:
     """Exchange username/password for Keycloak tokens (direct access grant)."""
+    client_id, client_secret = keycloak_client_credentials(settings, client_type)
+    scope = "openid profile email"
     data = {
         "grant_type": "password",
-        "client_id": settings.keycloak_client_id,
-        "client_secret": settings.keycloak_client_secret,
+        "client_id": client_id,
+        "client_secret": client_secret,
         "username": username,
         "password": password,
-        "scope": "openid profile email",
+        "scope": scope,
     }
     return await _token_request(data, settings)
 
@@ -161,12 +186,15 @@ async def keycloak_password_grant(
 async def keycloak_refresh_grant(
     refresh_token: str,
     settings: BaseServiceSettings,
+    *,
+    client_type: AuthClientType = "web",
 ) -> dict[str, Any]:
     """Rotate tokens using a Keycloak refresh token."""
+    client_id, client_secret = keycloak_client_credentials(settings, client_type)
     data = {
         "grant_type": "refresh_token",
-        "client_id": settings.keycloak_client_id,
-        "client_secret": settings.keycloak_client_secret,
+        "client_id": client_id,
+        "client_secret": client_secret,
         "refresh_token": refresh_token,
     }
     return await _token_request(data, settings)

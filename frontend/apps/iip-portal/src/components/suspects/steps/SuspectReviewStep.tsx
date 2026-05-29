@@ -1,51 +1,152 @@
 import type { ReactNode } from 'react';
 import { Pencil } from 'lucide-react';
-import { AdminButton } from '../../admin/AdminButton';
-import type { SuspectDossierDraft, WizardStepId } from '../../../pages/suspects/suspectTypes';
+import { SuspectDossierPhotoThumb } from '../SuspectDossierPhotoThumb';
+import { SuspectLinkReview } from '../SuspectLinkReview';
+
+const KERALA_POLICE_LOGO = '/kerala-police-logo-transparent.png';
+import type { SuspectAddress, SuspectDossierDraft, WizardStepId } from '../../../pages/suspects/suspectTypes';
 
 interface SuspectReviewStepProps {
   draft: SuspectDossierDraft;
   onEditStep: (step: WizardStepId) => void;
+  onLinkDecision: (decision: SuspectDossierDraft['linkDecision']) => void;
 }
 
-function ReviewBlock({
+function ReportSection({
+  number,
   title,
   step,
   onEdit,
   children,
 }: {
+  number: string;
   title: string;
   step: WizardStepId;
   onEdit: (step: WizardStepId) => void;
   children: ReactNode;
 }) {
   return (
-    <section className="dossier-review-block">
-      <div className="dossier-review-block-header">
-        <h3 className="text-sm font-semibold text-iip-text">{title}</h3>
-        <AdminButton type="button" variant="ghost" size="xs" onClick={() => onEdit(step)}>
-          <Pencil size={14} />
-          Edit
-        </AdminButton>
+    <section className="suspect-report__section group">
+      <div className="suspect-report__section-head">
+        <h2 className="suspect-report__section-title">
+          <span className="suspect-report__section-num">{number}</span>
+          {title}
+        </h2>
+        <button
+          type="button"
+          className="suspect-report__edit-btn"
+          onClick={() => onEdit(step)}
+          aria-label={`Edit ${title}`}
+          title={`Edit ${title}`}
+        >
+          <Pencil size={15} strokeWidth={2} />
+        </button>
       </div>
-      <div className="dossier-review-block-body">{children}</div>
+      <div className="suspect-report__section-body">{children}</div>
     </section>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  if (!value?.trim()) return null;
+function FieldTable({ children }: { children: ReactNode }) {
   return (
-    <div className="dossier-review-row">
-      <dt className="dossier-review-label">{label}</dt>
-      <dd className="dossier-review-value">{value}</dd>
-    </div>
+    <table className="suspect-report__table">
+      <tbody>{children}</tbody>
+    </table>
   );
 }
 
-export function SuspectReviewStep({ draft, onEditStep }: SuspectReviewStepProps) {
-  const addr = draft.address;
-  const addressLine = [
+function FieldRow({
+  label,
+  value,
+  colSpan,
+}: {
+  label: string;
+  value: string;
+  colSpan?: boolean;
+}) {
+  const text = value?.trim() || '—';
+  if (colSpan) {
+    return (
+      <tr className="suspect-report__field-row suspect-report__field-row--full">
+        <th scope="row">{label}</th>
+        <td colSpan={3}>{text}</td>
+      </tr>
+    );
+  }
+  return (
+    <tr className="suspect-report__field-row">
+      <th scope="row">{label}</th>
+      <td>{text}</td>
+    </tr>
+  );
+}
+
+function FieldPair({
+  left,
+  right,
+}: {
+  left: { label: string; value: string };
+  right: { label: string; value: string };
+}) {
+  return (
+    <tr className="suspect-report__field-row">
+      <th scope="row">{left.label}</th>
+      <td>{left.value?.trim() || '—'}</td>
+      <th scope="row">{right.label}</th>
+      <td>{right.value?.trim() || '—'}</td>
+    </tr>
+  );
+}
+
+function formatReportDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return new Date().toLocaleDateString('en-IN');
+  }
+}
+
+function shortDraftId(id: string): string {
+  return id.length > 8 ? id.slice(0, 8).toUpperCase() : id.toUpperCase();
+}
+
+function ReportPhoto({
+  photo,
+  dossierDraftId,
+  alt,
+  size,
+  className,
+}: {
+  photo: SuspectDossierDraft['photos'][number];
+  dossierDraftId: string;
+  alt: string;
+  size: 'mugshot' | 'thumb';
+  className?: string;
+}) {
+  if (photo.previewUrl) {
+    return <img src={photo.previewUrl} alt={alt} className={className} />;
+  }
+  if (photo.storageKey) {
+    return (
+      <SuspectDossierPhotoThumb
+        dossierDraftId={dossierDraftId}
+        photoId={photo.id}
+        storageKey={photo.storageKey}
+        alt={alt}
+        size={size}
+        className={className}
+      />
+    );
+  }
+  return null;
+}
+
+function formatAddressLine(addr: SuspectAddress): string {
+  return [
     addr.houseNo,
     addr.houseName,
     addr.streetName,
@@ -55,137 +156,301 @@ export function SuspectReviewStep({ draft, onEditStep }: SuspectReviewStepProps)
   ]
     .filter(Boolean)
     .join(', ');
+}
+
+function AddressReportBlock({ title, addr }: { title: string; addr: SuspectAddress }) {
+  const addressLine = formatAddressLine(addr);
+  return (
+    <div className="suspect-report__address-block space-y-0">
+      <p className="text-xs font-semibold text-iip-text uppercase tracking-wide mb-2">{title}</p>
+      <FieldTable>
+        <FieldRow label="Full address" value={addressLine} colSpan />
+        <FieldPair
+          left={{ label: 'PIN code', value: addr.pincode }}
+          right={{ label: 'Police station', value: addr.policeStation }}
+        />
+        <FieldPair
+          left={{ label: 'District', value: addr.district }}
+          right={{ label: 'State', value: addr.state }}
+        />
+        <FieldRow label="Country" value={addr.country} colSpan />
+        {(addr.latitude || addr.longitude) && (
+          <FieldRow
+            label="Geo coordinates"
+            value={`${addr.latitude || '—'}, ${addr.longitude || '—'}`}
+            colSpan
+          />
+        )}
+      </FieldTable>
+    </div>
+  );
+}
+
+export function SuspectReviewStep({ draft, onEditStep, onLinkDecision }: SuspectReviewStepProps) {
+  const front = draft.photos.find((p) => p.poseType === 'FRONT');
+  const galleryPhotos = draft.photos.filter(
+    (p) =>
+      (p.previewUrl || p.storageKey) &&
+      (p.status === 'validated' || p.status === 'duplicate')
+  );
+  const annexPhotos = galleryPhotos.filter((p) => p.poseType !== 'FRONT');
+
+  const linkLabel =
+    draft.linkDecision?.decision === 'CONFIRMED_LINK'
+      ? 'Linked to existing master profile'
+      : draft.linkDecision?.decision === 'REJECTED_LINK'
+        ? 'Recorded as different person (new master)'
+        : null;
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-iip-text-muted">
-        Review the dossier below. Saving will be enabled once the backend is connected — for now
-        this confirms your screen design.
+    <div className="suspect-report-wrap">
+      <p className="suspect-report-wrap__hint">
+        Final review before watch-list submission. Hover a section and use the edit control to
+        return to that step.
       </p>
 
-      <div className="dossier-review-layout">
-        {draft.photos.some((p) => p.previewUrl) && (
-          <div className="dossier-review-photos-grid">
-            {draft.photos
-              .filter((p) => p.previewUrl)
-              .map((p) => (
-                <figure key={p.id} className="dossier-review-photo-card">
-                  <img src={p.previewUrl!} alt="" />
-                  <figcaption>
-                    {p.label}
-                    {p.faceId && (
-                      <span className="text-emerald-600 dark:text-emerald-400"> · FRS indexed</span>
-                    )}
-                  </figcaption>
-                </figure>
-              ))}
+      <article className="suspect-report" role="document" aria-label="Suspect dossier report">
+        <header className="suspect-report__masthead">
+          <div className="suspect-report__masthead-emblem">
+            <div className="suspect-report__masthead-logo">
+              <img
+                src={KERALA_POLICE_LOGO}
+                alt="Kerala Police emblem"
+                className="suspect-report__masthead-logo-img"
+                draggable={false}
+              />
+            </div>
           </div>
-        )}
+          <div className="suspect-report__masthead-text">
+            <p className="suspect-report__org">Government of Kerala · Kerala Police</p>
+            <h1 className="suspect-report__title">Suspect intelligence dossier</h1>
+            <p className="suspect-report__subtitle">
+              Watch-list nomination — analyst submission (draft preview)
+            </p>
+          </div>
+          <div className="suspect-report__stamp" aria-hidden>
+            <span>DRAFT</span>
+          </div>
+        </header>
 
-        <div className="space-y-3 min-w-0 flex-1">
-          <ReviewBlock title="Photographs" step="photo" onEdit={onEditStep}>
-            <ul className="text-sm space-y-1">
-              {draft.photos
-                .filter((p) => p.status === 'validated' || p.status === 'duplicate')
-                .map((p) => (
-                  <li key={p.id}>
-                    <span className="font-medium">{p.label}</span>
-                    <span className="text-iip-text-muted">
-                      {' '}
-                      · {p.detectedPose ?? p.poseType}
-                      {p.duplicateMatches.length > 0 && ' · similar match flagged'}
-                    </span>
-                  </li>
-                ))}
-              {!draft.photos.some((p) => p.poseType === 'FRONT' && p.faceId) && (
-                <li className="text-red-600">Front photo not indexed</li>
-              )}
-            </ul>
-          </ReviewBlock>
-
-          <ReviewBlock title="Identity" step="identity" onEdit={onEditStep}>
-            <dl className="space-y-1">
-              <Row label="Criminal name" value={draft.criminalName} />
-              <Row label="Alias" value={draft.aliasName} />
-              <Row label="Gender" value={draft.gender} />
-              <Row label="Father's name" value={draft.fathersName} />
-              <Row label="Date of birth" value={draft.dateOfBirth} />
-              <Row label="Age" value={draft.age} />
-              <Row label="Place of birth" value={draft.placeOfBirth} />
-              <Row label="Religion" value={draft.religion} />
-              <Row label="Category" value={draft.category} />
-            </dl>
-          </ReviewBlock>
-
-          <ReviewBlock title="Address" step="address" onEdit={onEditStep}>
-            <dl className="space-y-1">
-              <Row
-                label="Address type"
-                value={addr.isPermanent ? 'Permanent' : 'Current / temporary'}
-              />
-              <Row label="Address" value={addressLine} />
-              <Row label="Pincode" value={addr.pincode} />
-              <Row
-                label="Location"
-                value={[addr.district, addr.state, addr.country].filter(Boolean).join(', ')}
-              />
-              <Row label="Police station" value={addr.policeStation} />
-              {(addr.latitude || addr.longitude) && (
-                <Row label="Coordinates" value={`${addr.latitude}, ${addr.longitude}`} />
-              )}
-            </dl>
-          </ReviewBlock>
-
-          <ReviewBlock title="Contacts" step="contacts" onEdit={onEditStep}>
-            {draft.contacts.length === 0 ? (
-              <p className="text-sm text-iip-text-muted">None recorded</p>
-            ) : (
-              <ul className="space-y-2">
-                {draft.contacts.map((c) => (
-                  <li key={c.id} className="text-sm">
-                    <span className="font-medium text-iip-text">{c.type}</span>
-                    <span className="text-iip-text-muted mx-2">·</span>
-                    {c.value || '—'}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </ReviewBlock>
-
-          <ReviewBlock title="Social media" step="social" onEdit={onEditStep}>
-            {draft.socialAccounts.length === 0 ? (
-              <p className="text-sm text-iip-text-muted">None recorded</p>
-            ) : (
-              <ul className="space-y-2">
-                {draft.socialAccounts.map((s) => (
-                  <li key={s.id} className="text-sm">
-                    <span className="font-medium text-iip-text">{s.platform}</span>
-                    <span className="text-iip-text-muted mx-2">·</span>
-                    {s.details || '—'}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </ReviewBlock>
-
-          <ReviewBlock title="Relatives & whereabouts" step="relatives" onEdit={onEditStep}>
-            {draft.relatives.length === 0 ? (
-              <p className="text-sm text-iip-text-muted">None recorded</p>
-            ) : (
-              <ul className="space-y-3">
-                {draft.relatives.map((r) => (
-                  <li key={r.id} className="text-sm border-l-2 border-iip-primary/30 pl-3">
-                    <p className="font-medium text-iip-text">{r.name || 'Unnamed'}</p>
-                    <p className="text-iip-text-muted text-xs mt-0.5">
-                      {[r.relation, r.gender, r.occupation].filter(Boolean).join(' · ')}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </ReviewBlock>
+        <div className="suspect-report__meta">
+          <div className="suspect-report__meta-item">
+            <span className="suspect-report__meta-label">Reference</span>
+            <span className="suspect-report__meta-value">DOS-{shortDraftId(draft.dossierDraftId)}</span>
+          </div>
+          <div className="suspect-report__meta-item">
+            <span className="suspect-report__meta-label">Report date</span>
+            <span className="suspect-report__meta-value">{formatReportDate(draft.updatedAt)}</span>
+          </div>
+          <div className="suspect-report__meta-item">
+            <span className="suspect-report__meta-label">Subject</span>
+            <span className="suspect-report__meta-value suspect-report__meta-value--emphasis">
+              {draft.criminalName.trim() || 'Unnamed subject'}
+            </span>
+          </div>
+          <div className="suspect-report__meta-item">
+            <span className="suspect-report__meta-label">Link status</span>
+            <span className="suspect-report__meta-value">{linkLabel ?? 'Pending / not linked'}</span>
+          </div>
         </div>
-      </div>
+
+        <SuspectLinkReview
+          draft={draft}
+          linkDecision={draft.linkDecision}
+          onLinkDecision={onLinkDecision}
+        />
+
+        <ReportSection number="I" title="Photographs & biometric capture" step="photo" onEdit={onEditStep}>
+          <div className="suspect-report__photo-layout">
+            <figure className="suspect-report__mugshot">
+              {front && (front.previewUrl || front.storageKey) ? (
+                <ReportPhoto
+                  photo={front}
+                  dossierDraftId={draft.dossierDraftId}
+                  alt="Front face photograph"
+                  size="mugshot"
+                  className="suspect-report__mugshot-img"
+                />
+              ) : (
+                <div className="suspect-report__mugshot-empty">No front photograph</div>
+              )}
+              <figcaption>
+                Primary (front)
+                {front?.faceId && <span className="suspect-report__frs-tag">FRS captured</span>}
+              </figcaption>
+            </figure>
+            <div className="suspect-report__photo-details">
+              <FieldTable>
+                <FieldRow label="Front pose detected" value={front?.detectedPose ?? front?.poseType ?? ''} />
+                <FieldRow
+                  label="Face recognition"
+                  value={front?.faceId ? 'Embedding stored (draft)' : 'Not indexed'}
+                />
+                <FieldRow
+                  label="Duplicate screening"
+                  value={
+                    (front?.duplicateMatches.length ?? 0) > 0
+                      ? `${front!.duplicateMatches.length} similar face(s) flagged`
+                      : 'No match flagged'
+                  }
+                />
+              </FieldTable>
+              {annexPhotos.length > 0 && (
+                <div className="suspect-report__photo-grid">
+                  <p className="suspect-report__photo-grid-label">Supplementary angles</p>
+                  <div className="suspect-report__photo-grid-inner">
+                    {annexPhotos.map((p) => (
+                      <figure key={p.id} className="suspect-report__photo-thumb">
+                        <ReportPhoto
+                          photo={p}
+                          dossierDraftId={draft.dossierDraftId}
+                          alt={p.label}
+                          size="thumb"
+                        />
+                        <figcaption>{p.label}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </ReportSection>
+
+        <ReportSection number="II" title="Personal particulars" step="identity" onEdit={onEditStep}>
+          <FieldTable>
+            <FieldRow label="Criminal / legal name" value={draft.criminalName} colSpan />
+            <FieldPair
+              left={{ label: 'Alias / known as', value: draft.aliasName }}
+              right={{ label: 'Gender', value: draft.gender }}
+            />
+            <FieldPair
+              left={{ label: "Father's name", value: draft.fathersName }}
+              right={{ label: 'Date of birth', value: draft.dateOfBirth }}
+            />
+            <FieldPair
+              left={{ label: 'Age', value: draft.age }}
+              right={{ label: 'Year of birth', value: draft.yearOfBirth }}
+            />
+            <FieldPair
+              left={{ label: 'Place of birth', value: draft.placeOfBirth }}
+              right={{ label: 'Religion', value: draft.religion }}
+            />
+            <FieldRow label="Social category" value={draft.category} colSpan />
+          </FieldTable>
+        </ReportSection>
+
+        <ReportSection number="III" title="Address & location" step="address" onEdit={onEditStep}>
+          <div className="space-y-6">
+            {!draft.hasDifferentPresentAddress && (
+              <FieldTable>
+                <FieldRow label="Address type" value="Permanent and present (same)" colSpan />
+              </FieldTable>
+            )}
+            <AddressReportBlock title="Permanent address" addr={draft.address} />
+            {draft.hasDifferentPresentAddress && (
+              <AddressReportBlock title="Present / current address" addr={draft.presentAddress} />
+            )}
+          </div>
+        </ReportSection>
+
+        <ReportSection number="IV" title="Contact details" step="contacts" onEdit={onEditStep}>
+          {draft.contacts.length === 0 ? (
+            <p className="suspect-report__empty">No contact numbers or email recorded.</p>
+          ) : (
+            <table className="suspect-report__table suspect-report__table--list">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Number / identifier</th>
+                </tr>
+              </thead>
+              <tbody>
+                {draft.contacts.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.type}</td>
+                    <td>{c.value || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </ReportSection>
+
+        <ReportSection number="V" title="Digital footprint" step="social" onEdit={onEditStep}>
+          {draft.socialAccounts.length === 0 ? (
+            <p className="suspect-report__empty">No social media accounts recorded.</p>
+          ) : (
+            <table className="suspect-report__table suspect-report__table--list">
+              <thead>
+                <tr>
+                  <th>Platform</th>
+                  <th>Profile / handle details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {draft.socialAccounts.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.platform}</td>
+                    <td>{s.details || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </ReportSection>
+
+        <ReportSection
+          number="VI"
+          title="Associates, relatives & whereabouts"
+          step="relatives"
+          onEdit={onEditStep}
+        >
+          {draft.relatives.length === 0 ? (
+            <p className="suspect-report__empty">No relatives or associates recorded.</p>
+          ) : (
+            <table className="suspect-report__table suspect-report__table--list">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Relation</th>
+                  <th>Gender</th>
+                  <th>Occupation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {draft.relatives.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.name || '—'}</td>
+                    <td>{r.relation || '—'}</td>
+                    <td>{r.gender || '—'}</td>
+                    <td>{r.occupation || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </ReportSection>
+
+        <footer className="suspect-report__footer">
+          <div className="suspect-report__certification">
+            <p className="suspect-report__cert-label">Certification (on submit)</p>
+            <p className="suspect-report__cert-line">
+              I certify that the particulars above are recorded to the best of my knowledge for
+              intelligence watch-list purposes and have been verified against available records.
+            </p>
+            <div className="suspect-report__sig-row">
+              <span className="suspect-report__sig-block">Submitting officer</span>
+              <span className="suspect-report__sig-block">Office / unit</span>
+              <span className="suspect-report__sig-block">Date</span>
+            </div>
+          </div>
+          <p className="suspect-report__disclaimer">
+            CONFIDENTIAL — For official use within the Integrated Intelligence Platform (IIP). Unauthorized
+            disclosure is prohibited.
+          </p>
+        </footer>
+      </article>
     </div>
   );
 }

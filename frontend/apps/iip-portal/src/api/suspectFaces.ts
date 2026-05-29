@@ -131,6 +131,37 @@ export async function discardSuspectDraftPhotos(dossierDraftId: string): Promise
   });
 }
 
+export interface IndexSubmittedFaceResponse {
+  indexed: boolean;
+  face_id: string;
+  suspect_id: string;
+  message: string | null;
+}
+
+/** Index front face in Elasticsearch after dossier submit. */
+export async function indexSubmittedSuspectFace(params: {
+  suspectId: string;
+  dossierDraftId: string;
+  photoId: string;
+  storageKey: string;
+  faceId: string;
+  criminalName: string;
+}): Promise<IndexSubmittedFaceResponse> {
+  const res = await apiClient.post<IndexSubmittedFaceResponse>(
+    '/ml/faces/index-submitted',
+    {
+      suspect_id: params.suspectId,
+      dossier_draft_id: params.dossierDraftId,
+      photo_id: params.photoId,
+      storage_key: params.storageKey,
+      face_id: params.faceId,
+      criminal_name: params.criminalName,
+    },
+    { skipSuccessToast: true }
+  );
+  return res.data;
+}
+
 /** Load stored photo bytes for UI preview (auth via apiClient). */
 export async function fetchSuspectPhotoPreviewDataUrl(
   dossierDraftId: string,

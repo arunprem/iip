@@ -1,4 +1,44 @@
-import type { SuspectDossierDraft, SuspectPhotoSlot } from './suspectTypes';
+import { emptyAddress, emptyDossierDraft, emptyPresentAddress } from './suspectFormDefaults';
+import type { SuspectAddress, SuspectDossierDraft, SuspectPhotoSlot } from './suspectTypes';
+
+export function addressHasContent(addr: SuspectAddress): boolean {
+  return Boolean(
+    addr.villageTownCity.trim() ||
+      addr.locality.trim() ||
+      addr.pincode.trim() ||
+      addr.houseNo.trim() ||
+      addr.streetName.trim()
+  );
+}
+
+/** Merge stored / partial drafts with defaults (incl. dual-address fields). */
+export function normalizeDossierDraft(
+  parsed: Partial<SuspectDossierDraft> & { address?: SuspectAddress }
+): SuspectDossierDraft {
+  const base = emptyDossierDraft();
+  const merged: SuspectDossierDraft = {
+    ...base,
+    ...parsed,
+    address: { ...base.address, ...(parsed.address ?? {}) },
+    presentAddress: parsed.presentAddress
+      ? { ...emptyPresentAddress(), ...parsed.presentAddress, isPermanent: false }
+      : emptyPresentAddress(),
+    hasDifferentPresentAddress: parsed.hasDifferentPresentAddress ?? false,
+    linkDecision: parsed.linkDecision ?? null,
+  };
+
+  if (parsed.hasDifferentPresentAddress === undefined && parsed.address?.isPermanent === false) {
+    merged.hasDifferentPresentAddress = true;
+    merged.presentAddress = { ...parsed.address, isPermanent: false };
+    merged.address = { ...emptyAddress(), isPermanent: true };
+  }
+
+  if (!merged.hasDifferentPresentAddress) {
+    merged.address = { ...merged.address, isPermanent: true };
+  }
+
+  return merged;
+}
 
 export function updatePhotoSlot(
   photos: SuspectPhotoSlot[],
@@ -30,22 +70,37 @@ export function syncAgeFromDob(dateOfBirth: string): Pick<SuspectDossierDraft, '
   };
 }
 
+function isFrontPhotoAnalyzed(front: SuspectPhotoSlot): boolean {
+  return front.status === 'validated' || front.status === 'duplicate';
+}
+
+function isDuplicateResolved(
+  draft: SuspectDossierDraft,
+  front: SuspectPhotoSlot
+): boolean {
+  if (front.duplicateMatches.length === 0) return true;
+  if (
+    draft.linkDecision?.decision === 'CONFIRMED_LINK' ||
+    draft.linkDecision?.decision === 'REJECTED_LINK'
+  ) {
+    return true;
+  }
+  return front.duplicateAcknowledged;
+}
+
 export function hasValidatedFrontPhoto(draft: SuspectDossierDraft): boolean {
-  return draft.photos.some(
-    (p) =>
-      p.poseType === 'FRONT' &&
-      p.status === 'validated' &&
-      (p.duplicateMatches.length === 0 || p.duplicateAcknowledged)
-  );
+  const front = draft.photos.find((p) => p.poseType === 'FRONT');
+  if (!front || !isFrontPhotoAnalyzed(front)) return false;
+  return isDuplicateResolved(draft, front);
 }
 
 export function photosStepBlockedReason(draft: SuspectDossierDraft): string | null {
   const front = draft.photos.find((p) => p.poseType === 'FRONT');
-  if (!front || front.status !== 'validated') {
+  if (!front || !isFrontPhotoAnalyzed(front)) {
     return 'Upload and validate a front-facing photo before continuing.';
   }
-  if (front.duplicateMatches.length > 0 && !front.duplicateAcknowledged) {
-    return 'Acknowledge the similar-face warning on the front photo, or upload a different image.';
+  if (front.duplicateMatches.length > 0 && !isDuplicateResolved(draft, front)) {
+    return 'Choose Same person (link) or Different person on the duplicate alert before continuing.';
   }
   const uploading = draft.photos.some((p) => p.status === 'uploading');
   if (uploading) {
@@ -57,10 +112,9 @@ export function photosStepBlockedReason(draft: SuspectDossierDraft): string | nu
 export function stepCompletion(draft: SuspectDossierDraft): Record<string, boolean> {
   const hasPhoto = hasValidatedFrontPhoto(draft);
   const hasIdentity = Boolean(draft.criminalName.trim());
-  const addr = draft.address;
-  const hasAddress = Boolean(
-    addr.villageTownCity.trim() || addr.locality.trim() || addr.pincode.trim()
-  );
+  const hasAddress =
+    addressHasContent(draft.address) &&
+    (!draft.hasDifferentPresentAddress || addressHasContent(draft.presentAddress));
   const hasContacts = draft.contacts.some((c) => c.value.trim());
   const hasSocial = draft.socialAccounts.some((s) => s.details.trim());
   const hasRelatives = draft.relatives.some((r) => r.name.trim());

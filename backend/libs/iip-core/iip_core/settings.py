@@ -81,7 +81,12 @@ class BaseServiceSettings(BaseSettings):
     keycloak_client_id: str = "iip-backend"
     keycloak_client_secret: str = Field(
         default="iip-backend-secret-dev-only",
-        description="Confidential client secret for token and admin API calls",
+        description="Confidential client secret for web portal token grants",
+    )
+    keycloak_mobile_client_id: str = "iip-mobile"
+    keycloak_mobile_client_secret: str = Field(
+        default="iip-mobile-secret-dev-only",
+        description="Confidential client secret for mobile app token grants (separate SSO session)",
     )
     keycloak_admin_username: str = Field(
         default="admin",

@@ -62,9 +62,11 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>Use Face ID or Touch ID for quick, secure access to IIP Mobile.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Allow camera access to take your profile photo.</string>
+	<string>Allow camera access for profile photos and field face recognition (FRS).</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Allow photo library access to choose your profile photo.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Allow location access to find suspects near your current position.</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

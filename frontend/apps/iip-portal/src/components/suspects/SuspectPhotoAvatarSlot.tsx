@@ -101,7 +101,7 @@ export function SuspectPhotoAvatarSlot({
               <span className="dossier-photo-avatar__sample-badge">Example</span>
             </span>
           ) : (
-            <span className="dossier-photo-avatar__placeholder" aria-hidden>
+            <span className="dossier-photo-avatar__placeholder dossier-photo-avatar__placeholder--empty" aria-hidden>
               <User
                 className={
                   size === 'hero'
@@ -110,6 +110,9 @@ export function SuspectPhotoAvatarSlot({
                 }
                 strokeWidth={1.25}
               />
+              {size === 'thumb' && (
+                <span className="dossier-photo-avatar__upload-label">Upload</span>
+              )}
             </span>
           )}
 
@@ -195,6 +198,9 @@ export function SuspectPhotoAvatarSlot({
                 ? 'Turn left · cheek to camera'
                 : 'Turn right · cheek to camera'}
           </p>
+        )}
+        {size === 'thumb' && hint && !hasPhoto && (
+          <p className="dossier-photo-avatar-slot__hint">{hint}</p>
         )}
         {size === 'hero' && hint && (
           <p className="dossier-photo-avatar-slot__hint">{hint}</p>

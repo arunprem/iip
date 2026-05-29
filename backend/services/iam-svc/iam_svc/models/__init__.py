@@ -8,6 +8,17 @@ from iam_svc.models.privilege_action import PrivilegeAction
 from iam_svc.models.menu import Menu
 from iam_svc.models.unit_type import UnitType
 from iam_svc.models.rank import Rank
+from iam_svc.models.suspect_dossier import (
+    Suspect,
+    SuspectAddress,
+    SuspectContact,
+    SuspectDossier,
+    SuspectMaster,
+    SuspectPhoto,
+    SuspectRelative,
+    SuspectSocialAccount,
+)
+from iam_svc.models.suspect_link_decision import SuspectLinkDecision
 
 __all__ = [
     "User",
@@ -20,4 +31,13 @@ __all__ = [
     "Menu",
     "UnitType",
     "Rank",
+    "SuspectMaster",
+    "Suspect",
+    "SuspectDossier",
+    "SuspectAddress",
+    "SuspectContact",
+    "SuspectSocialAccount",
+    "SuspectRelative",
+    "SuspectPhoto",
+    "SuspectLinkDecision",
 ]

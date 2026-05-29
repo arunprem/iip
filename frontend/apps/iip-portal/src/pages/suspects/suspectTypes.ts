@@ -50,10 +50,23 @@ export interface FaceDuplicateMatch {
   photo_id: string | null;
   dossier_draft_id: string | null;
   suspect_id: string | null;
+  master_suspect_id?: string | null;
+  dossier_id?: string | null;
   criminal_name: string | null;
   storage_key: string | null;
   pose_type: string;
   similarity_score: number;
+  match_score?: number;
+  tier?: 'STRONG' | 'WEAK';
+  office_name?: string | null;
+}
+
+export interface SuspectLinkDecision {
+  masterSuspectId: string;
+  matchedDossierId?: string;
+  faceSimilarity: number;
+  matchScore: number;
+  decision: 'CONFIRMED_LINK' | 'REJECTED_LINK';
 }
 
 export type SuspectPhotoPoseType =
@@ -85,6 +98,14 @@ export interface SuspectPhotoSlot {
 
 export interface SuspectDossierDraft {
   dossierDraftId: string;
+  /** Set when editing an existing dossier (exclude self from link suggestions). */
+  editingDossierId?: string;
+  editingMasterSuspectId?: string;
+  /** Permanent / native address (always saved). */
+  address: SuspectAddress;
+  /** Present / current address when different from permanent. */
+  presentAddress: SuspectAddress;
+  hasDifferentPresentAddress: boolean;
   photos: SuspectPhotoSlot[];
   criminalName: string;
   aliasName: string;
@@ -96,10 +117,10 @@ export interface SuspectDossierDraft {
   placeOfBirth: string;
   religion: string;
   category: string;
-  address: SuspectAddress;
   contacts: SuspectContact[];
   socialAccounts: SuspectSocialAccount[];
   relatives: SuspectRelative[];
+  linkDecision: SuspectLinkDecision | null;
   updatedAt: string;
 }
 

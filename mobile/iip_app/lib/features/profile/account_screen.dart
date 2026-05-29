@@ -13,6 +13,8 @@ import 'profile_photo_crop_screen.dart';
 import 'settings_screen.dart';
 import 'widgets/profile_avatar.dart';
 
+/// Legacy screen — profile and settings live on the Settings tab ([SettingsScreen]).
+@Deprecated('Use SettingsScreen in AppShell instead')
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
 

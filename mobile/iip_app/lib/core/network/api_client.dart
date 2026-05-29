@@ -13,6 +13,9 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+/// Returns true when tokens were rotated successfully.
+typedef TokenRefresher = Future<bool> Function();
+
 class ApiClient {
   ApiClient({http.Client? client, Duration? timeout})
       : _client = client ?? http.Client(),
@@ -23,9 +26,20 @@ class ApiClient {
   String? _accessToken;
   String? _officeId;
 
+  TokenRefresher? tokenRefresher;
+  Future<void> Function()? onSessionExpired;
+
+  Future<bool>? _refreshInFlight;
+
   void setAccessToken(String? token) => _accessToken = token;
   void setOfficeId(String? officeId) => _officeId = officeId;
   String? get officeId => _officeId;
+
+  static const _authFreePaths = {
+    '/auth/login',
+    '/auth/refresh',
+    '/captcha/',
+  };
 
   Map<String, String> _headers({bool jsonBody = false}) {
     final headers = <String, String>{
@@ -41,6 +55,47 @@ class ApiClient {
     return headers;
   }
 
+  bool _isAuthFreePath(String path) {
+    for (final prefix in _authFreePaths) {
+      if (path.startsWith(prefix)) return true;
+    }
+    return false;
+  }
+
+  bool _shouldAttemptRefresh(ApiException error, String path) {
+    if (_isAuthFreePath(path)) return false;
+    if (tokenRefresher == null) return false;
+    return error.statusCode == 401;
+  }
+
+  Future<bool> _coordinatedRefresh() {
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+
+    final future = tokenRefresher!();
+    _refreshInFlight = future;
+    return future.whenComplete(() => _refreshInFlight = null);
+  }
+
+  Future<T> _withAuthRetry<T>(
+    String path,
+    Future<T> Function() request,
+  ) async {
+    try {
+      return await request();
+    } on ApiException catch (error) {
+      if (!_shouldAttemptRefresh(error, path)) rethrow;
+
+      final refreshed = await _coordinatedRefresh();
+      if (!refreshed) {
+        await onSessionExpired?.call();
+        rethrow;
+      }
+
+      return await request();
+    }
+  }
+
   Future<http.Response> _get(Uri uri, {Map<String, String>? headers}) =>
       _client.get(uri, headers: headers).timeout(_timeout);
 
@@ -51,51 +106,72 @@ class ApiClient {
       _client.patch(uri, headers: headers, body: body).timeout(_timeout);
 
   Future<Map<String, dynamic>> getJson(String path) async {
-    final response = await _get(
-      Uri.parse('${AppConfig.baseUrl}$path'),
-      headers: _headers(),
-    );
-    return _decode(response);
+    return _withAuthRetry(path, () async {
+      final response = await _get(
+        Uri.parse('${AppConfig.baseUrl}$path'),
+        headers: _headers(),
+      );
+      return _decode(response);
+    });
   }
 
   Future<Map<String, dynamic>> postJson(String path, Map<String, dynamic> body) async {
-    final response = await _post(
-      Uri.parse('${AppConfig.baseUrl}$path'),
-      headers: _headers(jsonBody: true),
-      body: jsonEncode(body),
-    );
-    return _decode(response);
+    return _withAuthRetry(path, () async {
+      final response = await _post(
+        Uri.parse('${AppConfig.baseUrl}$path'),
+        headers: _headers(jsonBody: true),
+        body: jsonEncode(body),
+      );
+      return _decode(response);
+    });
   }
 
   Future<Map<String, dynamic>> patchJson(String path, Map<String, dynamic> body) async {
-    final response = await _patch(
-      Uri.parse('${AppConfig.baseUrl}$path'),
-      headers: _headers(jsonBody: true),
-      body: jsonEncode(body),
-    );
-    return _decode(response);
+    return _withAuthRetry(path, () async {
+      final response = await _patch(
+        Uri.parse('${AppConfig.baseUrl}$path'),
+        headers: _headers(jsonBody: true),
+        body: jsonEncode(body),
+      );
+      return _decode(response);
+    });
+  }
+
+  Future<void> patchNoContent(String path) async {
+    await _withAuthRetry(path, () async {
+      final response = await _patch(
+        Uri.parse('${AppConfig.baseUrl}$path'),
+        headers: _headers(),
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) return;
+      throw ApiException(_extractError(response), statusCode: response.statusCode);
+    });
   }
 
   Future<void> postJsonNoContent(String path, Map<String, dynamic> body) async {
-    final response = await _post(
-      Uri.parse('${AppConfig.baseUrl}$path'),
-      headers: _headers(jsonBody: true),
-      body: jsonEncode(body),
-    );
-    if (response.statusCode >= 200 && response.statusCode < 300) return;
-    throw ApiException(_extractError(response), statusCode: response.statusCode);
+    await _withAuthRetry(path, () async {
+      final response = await _post(
+        Uri.parse('${AppConfig.baseUrl}$path'),
+        headers: _headers(jsonBody: true),
+        body: jsonEncode(body),
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) return;
+      throw ApiException(_extractError(response), statusCode: response.statusCode);
+    });
   }
 
   Future<Uint8List?> getBytes(String path) async {
-    final response = await _get(
-      Uri.parse('${AppConfig.baseUrl}$path'),
-      headers: _headers(),
-    );
-    if (response.statusCode == 404) return null;
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return response.bodyBytes;
-    }
-    throw ApiException(_extractError(response), statusCode: response.statusCode);
+    return _withAuthRetry(path, () async {
+      final response = await _get(
+        Uri.parse('${AppConfig.baseUrl}$path'),
+        headers: _headers(),
+      );
+      if (response.statusCode == 404) return null;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return response.bodyBytes;
+      }
+      throw ApiException(_extractError(response), statusCode: response.statusCode);
+    });
   }
 
   Future<Map<String, dynamic>> uploadMultipart(
@@ -105,7 +181,48 @@ class ApiClient {
     String filename, {
     String contentType = 'image/jpeg',
   }) async {
-    final request = http.MultipartRequest('POST', Uri.parse('${AppConfig.baseUrl}$path'));
+    return _withAuthRetry(path, () async {
+      return _uploadMultipartTo(
+        '${AppConfig.baseUrl}$path',
+        fieldName,
+        bytes,
+        filename,
+        contentType: contentType,
+        timeout: _timeout,
+      );
+    });
+  }
+
+  /// ML gateway uploads (FRS) — longer timeout for model inference.
+  Future<Map<String, dynamic>> uploadMultipartMl(
+    String path,
+    String fieldName,
+    Uint8List bytes,
+    String filename, {
+    String contentType = 'image/jpeg',
+    Duration timeout = const Duration(seconds: 90),
+  }) async {
+    return _withAuthRetry(path, () async {
+      return _uploadMultipartTo(
+        '${AppConfig.mlApiBase}$path',
+        fieldName,
+        bytes,
+        filename,
+        contentType: contentType,
+        timeout: timeout,
+      );
+    });
+  }
+
+  Future<Map<String, dynamic>> _uploadMultipartTo(
+    String url,
+    String fieldName,
+    Uint8List bytes,
+    String filename, {
+    required String contentType,
+    required Duration timeout,
+  }) async {
+    final request = http.MultipartRequest('POST', Uri.parse(url));
     request.headers.addAll(_headers());
     request.files.add(
       http.MultipartFile.fromBytes(
@@ -115,19 +232,21 @@ class ApiClient {
         contentType: http.MediaType.parse(contentType),
       ),
     );
-    final streamed = await _client.send(request).timeout(_timeout);
-    final response = await http.Response.fromStream(streamed).timeout(_timeout);
+    final streamed = await _client.send(request).timeout(timeout);
+    final response = await http.Response.fromStream(streamed).timeout(timeout);
     return _decode(response);
   }
 
   Future<List<dynamic>> getJsonList(String path) async {
-    final response = await _get(
-      Uri.parse('${AppConfig.baseUrl}$path'),
-      headers: _headers(),
-    );
-    final decoded = _decodeRaw(response);
-    if (decoded is List) return decoded;
-    throw ApiException('Expected a JSON array.');
+    return _withAuthRetry(path, () async {
+      final response = await _get(
+        Uri.parse('${AppConfig.baseUrl}$path'),
+        headers: _headers(),
+      );
+      final decoded = _decodeRaw(response);
+      if (decoded is List) return decoded;
+      throw ApiException('Expected a JSON array.');
+    });
   }
 
   Map<String, dynamic> _decode(http.Response response) {

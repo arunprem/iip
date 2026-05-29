@@ -7,7 +7,10 @@ import '../../shared/widgets/mobile_section.dart';
 import '../auth/auth_controller.dart';
 import '../auth/device_lock_setup_screen.dart';
 import 'office_switch_screen.dart';
+import 'profile_edit_screen.dart';
+import 'widgets/profile_header_card.dart';
 
+/// Settings tab: profile, unit, security, and session.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -169,6 +172,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
         cacheExtent: IipMotion.scrollCacheExtent,
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         children: [
+          const ProfileHeaderCard(),
+          const SizedBox(height: 24),
+          MobileSectionHeader(title: 'Profile', colors: colors),
+          MobileSettingsGroup(
+            colors: colors,
+            children: [
+              MobileSettingsTile(
+                colors: colors,
+                icon: Icons.badge_outlined,
+                title: 'PEN number',
+                subtitle: auth.profile?.badgeNumber.isNotEmpty == true
+                    ? auth.profile!.badgeNumber
+                    : '—',
+              ),
+              MobileSettingsTile(
+                colors: colors,
+                icon: Icons.email_outlined,
+                title: 'Email',
+                subtitle: auth.profile?.email ?? '—',
+              ),
+              MobileSettingsTile(
+                colors: colors,
+                icon: Icons.domain_outlined,
+                title: 'Department',
+                subtitle: auth.profile?.department ?? '—',
+              ),
+              MobileSettingsTile(
+                colors: colors,
+                icon: Icons.shield_outlined,
+                title: 'Clearance',
+                subtitle: auth.profile?.clearanceLevel ?? '—',
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          MobileSectionHeader(title: 'Manage', colors: colors),
+          MobileSettingsGroup(
+            colors: colors,
+            children: [
+              MobileSettingsTile(
+                colors: colors,
+                icon: Icons.edit_outlined,
+                title: 'Edit profile',
+                subtitle: 'Name, email, PEN, department',
+                onTap: () async {
+                  await context.pushSmooth(const ProfileEditScreen());
+                  if (mounted) {
+                    await auth.loadProfile();
+                  }
+                },
+              ),
+              if (multiOffice)
+                MobileSettingsTile(
+                  colors: colors,
+                  icon: Icons.apartment_rounded,
+                  title: 'Working unit',
+                  subtitle: auth.currentOffice?.officeName ?? 'Select unit',
+                  onTap: () => context.pushSmooth(const OfficeSwitchScreen()),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
           MobileSectionHeader(title: 'Appearance', colors: colors),
           MobileSettingsGroup(
             colors: colors,
@@ -197,22 +262,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-          if (multiOffice) ...[
-            const SizedBox(height: 20),
-            MobileSectionHeader(title: 'Access', colors: colors),
-            MobileSettingsGroup(
-              colors: colors,
-              children: [
-                MobileSettingsTile(
-                  colors: colors,
-                  icon: Icons.apartment_rounded,
-                  title: 'Working unit',
-                  subtitle: auth.currentOffice?.officeName ?? 'Select unit',
-                  onTap: () => context.pushSmooth(const OfficeSwitchScreen()),
-                ),
-              ],
-            ),
-          ],
           const SizedBox(height: 20),
           MobileSectionHeader(title: 'Security', colors: colors),
           MobileSettingsGroup(

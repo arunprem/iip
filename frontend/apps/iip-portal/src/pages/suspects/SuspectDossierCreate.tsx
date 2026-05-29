@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowRight,
@@ -20,14 +20,20 @@ import { SuspectPhotoStep } from '../../components/suspects/steps/SuspectPhotoSt
 import { SuspectRelativesStep } from '../../components/suspects/steps/SuspectRelativesStep';
 import { SuspectReviewStep } from '../../components/suspects/steps/SuspectReviewStep';
 import { SuspectSocialStep } from '../../components/suspects/steps/SuspectSocialStep';
-import { discardSuspectDraftPhotos } from '../../api/suspectFaces';
+import { discardSuspectDraftPhotos, indexSubmittedSuspectFace } from '../../api/suspectFaces';
+import { createSuspectDossier, scoreSuspectMatches } from '../../api/suspectDossiers';
 import { showToast } from '../../stores/toastStore';
 import {
   DOSSIER_DRAFT_STORAGE_KEY,
   WIZARD_STEPS,
   emptyDossierDraft,
 } from './suspectFormDefaults';
-import { hasValidatedFrontPhoto, photosStepBlockedReason, stepCompletion } from './suspectFormUtils';
+import {
+  hasValidatedFrontPhoto,
+  normalizeDossierDraft,
+  photosStepBlockedReason,
+  stepCompletion,
+} from './suspectFormUtils';
 import type { SuspectDossierDraft, WizardStepId } from './suspectTypes';
 
 function loadDraft(): SuspectDossierDraft {
@@ -61,15 +67,17 @@ function loadDraft(): SuspectDossierDraft {
       }
       return slot;
     });
-    return { ...base, ...parsed, photos };
+    return normalizeDossierDraft({ ...parsed, photos });
   } catch {
     return emptyDossierDraft();
   }
 }
 
 export default function SuspectDossierCreate() {
+  const navigate = useNavigate();
   const [step, setStep] = useState<WizardStepId>('photo');
   const [draft, setDraft] = useState<SuspectDossierDraft>(loadDraft);
+  const [submitting, setSubmitting] = useState(false);
 
   const stepIndex = WIZARD_STEPS.findIndex((s) => s.id === step);
   const meta = WIZARD_STEPS[stepIndex];
@@ -142,13 +150,53 @@ export default function SuspectDossierCreate() {
     showToast('info', 'Draft cleared.');
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!hasValidatedFrontPhoto(draft) || !draft.criminalName.trim()) {
       showToast('warning', 'Validated front photo and criminal name are required.');
       return;
     }
-    showToast('info', 'Screen design only — backend save will be wired in the next phase.');
-    console.info('[Suspect dossier draft]', draft);
+    if (submitting) return;
+
+    setSubmitting(true);
+    try {
+      if (!draft.linkDecision) {
+        const scored = await scoreSuspectMatches(draft);
+        const hasStrong = scored.some((m) => m.tier === 'STRONG');
+        if (hasStrong) {
+          showToast(
+            'warning',
+            'A strong match was found — confirm same person or reject on the review step.'
+          );
+          setStep('review');
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      const saved = await createSuspectDossier(draft);
+      const frontPhoto = saved.front_photo;
+      if (frontPhoto?.face_id && frontPhoto.storage_key) {
+        const indexResult = await indexSubmittedSuspectFace({
+          suspectId: saved.master_suspect_id,
+          dossierDraftId: saved.dossier_draft_id,
+          photoId: frontPhoto.photo_id,
+          storageKey: frontPhoto.storage_key,
+          faceId: frontPhoto.face_id,
+          criminalName: saved.criminal_name,
+        });
+        if (!indexResult.indexed && indexResult.message) {
+          showToast('warning', indexResult.message);
+        }
+      }
+
+      localStorage.removeItem(DOSSIER_DRAFT_STORAGE_KEY);
+      showToast('success', saved.message);
+      navigate('/suspects');
+    } catch {
+      /* API client surfaces errors */
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   useEffect(() => {
@@ -181,6 +229,7 @@ export default function SuspectDossierCreate() {
                 updatedAt: new Date().toISOString(),
               }));
             }}
+            onLinkDecision={(linkDecision) => patchDraft({ linkDecision })}
           />
         );
       case 'identity':
@@ -188,8 +237,14 @@ export default function SuspectDossierCreate() {
       case 'address':
         return (
           <SuspectAddressStep
-            address={draft.address}
-            onChange={(address) => patchDraft({ address })}
+            permanentAddress={draft.address}
+            presentAddress={draft.presentAddress}
+            hasDifferentPresentAddress={draft.hasDifferentPresentAddress}
+            onPermanentChange={(address) => patchDraft({ address })}
+            onPresentChange={(presentAddress) => patchDraft({ presentAddress })}
+            onHasDifferentPresentChange={(hasDifferentPresentAddress) =>
+              patchDraft({ hasDifferentPresentAddress })
+            }
           />
         );
       case 'contacts':
@@ -214,7 +269,13 @@ export default function SuspectDossierCreate() {
           />
         );
       case 'review':
-        return <SuspectReviewStep draft={draft} onEditStep={setStep} />;
+        return (
+          <SuspectReviewStep
+            draft={draft}
+            onEditStep={setStep}
+            onLinkDecision={(linkDecision) => patchDraft({ linkDecision })}
+          />
+        );
       default:
         return null;
     }
@@ -223,7 +284,7 @@ export default function SuspectDossierCreate() {
   return (
     <AdminPageLayout
       title="New suspect dossier"
-      description="Guided entry for criminal records — photo first, then structured details. Your progress is saved locally until the server API is ready."
+      description="Guided entry for criminal records — photo first, then structured details. Your progress is saved locally until you submit."
       icon={FileSearch}
       actions={
         <AdminButton type="button" variant="ghost" size="sm" onClick={clearDraft}>
@@ -232,58 +293,68 @@ export default function SuspectDossierCreate() {
         </AdminButton>
       }
     >
-      <AdminTipBanner>
-        <Keyboard size={16} className="shrink-0 opacity-70" />
-        <span>
-          Tip: press <strong>Enter</strong> to move to the next step (except on review). Use the
-          step bar above to jump back to any completed section.
-        </span>
-      </AdminTipBanner>
+      <div className="dossier-wizard-page">
+        <AdminTipBanner>
+          <Keyboard size={16} className="shrink-0 opacity-70" />
+          <span>
+            Tip: press <strong>Enter</strong> to move to the next step (except on review). Use the
+            step bar above to jump back to any completed section.
+          </span>
+        </AdminTipBanner>
 
-      <SuspectWizardStepper
-        currentStep={step}
-        completed={completed}
-        onStepClick={setStep}
-      />
+        <SuspectWizardStepper
+          currentStep={step}
+          completed={completed}
+          onStepClick={setStep}
+        />
 
-      <div className="dossier-wizard-body">
-        <AdminSectionCard
-          title={meta.label}
-          description={meta.description}
-          step={stepIndex + 1}
-        >
-          <div className="px-5 py-6">{stepBody}</div>
-        </AdminSectionCard>
-      </div>
+        <div className="dossier-wizard-shell">
+          <AdminSectionCard
+            title={meta.label}
+            description={step === 'review' ? undefined : meta.description}
+            step={stepIndex + 1}
+            className={`dossier-wizard-card${step === 'review' ? ' dossier-wizard-card--report-mode' : ''}`}
+          >
+            <div className="dossier-wizard-card-inner">
+              <div className="dossier-wizard-step-body">{stepBody}</div>
+              <footer className="dossier-wizard-footer" aria-label="Wizard actions">
+                <Link
+                  to="/suspects"
+                  className="btn-ghost btn btn-sm inline-flex items-center gap-1.5"
+                >
+                  <ArrowLeft size={16} />
+                  Back to list
+                </Link>
 
-      <div className="dossier-wizard-footer-bar" aria-label="Wizard actions">
-        <footer className="dossier-wizard-footer">
-          <Link to="/suspects" className="btn-ghost btn btn-sm inline-flex items-center gap-1.5">
-            <ArrowLeft size={16} />
-            Back to list
-          </Link>
+                <span className="admin-form-actions-spacer min-w-2" />
 
-          <span className="admin-form-actions-spacer min-w-2" />
+                {stepIndex > 0 && (
+                  <AdminButton type="button" variant="secondary" onClick={goBack}>
+                    <ArrowLeft size={16} />
+                    Previous
+                  </AdminButton>
+                )}
 
-          {stepIndex > 0 && (
-            <AdminButton type="button" variant="secondary" onClick={goBack}>
-              <ArrowLeft size={16} />
-              Previous
-            </AdminButton>
-          )}
-
-          {step !== 'review' ? (
-            <AdminButton type="button" variant="primary" onClick={goNext}>
-              Continue
-              <ArrowRight size={16} />
-            </AdminButton>
-          ) : (
-            <AdminButton type="button" variant="primary" onClick={handleSubmit}>
-              <Save size={16} />
-              Save dossier
-            </AdminButton>
-          )}
-        </footer>
+                {step !== 'review' ? (
+                  <AdminButton type="button" variant="primary" onClick={goNext}>
+                    Continue
+                    <ArrowRight size={16} />
+                  </AdminButton>
+                ) : (
+                  <AdminButton
+                    type="button"
+                    variant="primary"
+                    onClick={handleSubmit}
+                    disabled={submitting}
+                  >
+                    <Save size={16} />
+                    {submitting ? 'Submitting…' : 'Submit dossier'}
+                  </AdminButton>
+                )}
+              </footer>
+            </div>
+          </AdminSectionCard>
+        </div>
       </div>
     </AdminPageLayout>
   );

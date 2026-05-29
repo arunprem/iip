@@ -41,7 +41,7 @@ async function rotateAccessToken(): Promise<string | null> {
     refreshInFlight = apiClient
       .post<{ access_token: string; refresh_token: string }>(
         '/auth/refresh',
-        { refresh_token: refreshToken },
+        { refresh_token: refreshToken, client_type: 'web' },
         { skipToast: true }
       )
       .then((res) => {

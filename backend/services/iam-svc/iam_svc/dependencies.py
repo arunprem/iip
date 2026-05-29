@@ -101,3 +101,64 @@ def require_system_admin_user(
             detail="You do not have permission to perform this action.",
         )
     return current_user
+
+
+async def require_suspect_dossier_action(
+    action_code: str,
+    role: Annotated[Role, Depends(get_office_role)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Role:
+    perm = PermissionService(db)
+    if not await perm.role_has_action(role, "data:suspect-dossier", action_code):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to perform this action.",
+        )
+    return role
+
+
+async def require_suspect_dossier_create(
+    role: Annotated[Role, Depends(get_office_role)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Role:
+    return await require_suspect_dossier_action("CREATE", role, db)
+
+
+async def require_suspect_dossier_read(
+    role: Annotated[Role, Depends(get_office_role)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Role:
+    return await require_suspect_dossier_action("READ", role, db)
+
+
+async def require_suspect_dossier_update(
+    role: Annotated[Role, Depends(get_office_role)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Role:
+    return await require_suspect_dossier_action("UPDATE", role, db)
+
+
+async def require_suspect_master_read(
+    role: Annotated[Role, Depends(get_office_role)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Role:
+    return await require_suspect_dossier_action("READ_MASTER", role, db)
+
+
+async def require_suspect_cross_unit_read(
+    role: Annotated[Role, Depends(get_office_role)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Role:
+    return await require_suspect_dossier_action("READ_CROSS_UNIT", role, db)
+
+
+async def can_read_cross_unit(role: Role, db: AsyncSession) -> bool:
+    return await PermissionService(db).role_has_action(
+        role, "data:suspect-dossier", "READ_CROSS_UNIT"
+    )
+
+
+async def can_read_master(role: Role, db: AsyncSession) -> bool:
+    return await PermissionService(db).role_has_action(
+        role, "data:suspect-dossier", "READ_MASTER"
+    )

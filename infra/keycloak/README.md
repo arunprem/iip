@@ -12,8 +12,14 @@
 |--------|--------|
 | URL | `http://localhost:8081` (host port; container listens on 8080) |
 | Realm | `iip` |
-| Client ID | `iip-backend` |
-| Client secret | `iip-backend-secret-dev-only` |
+| Web client ID | `iip-backend` |
+| Web client secret | `iip-backend-secret-dev-only` |
+| Mobile client ID | `iip-mobile` |
+| Mobile client secret | `iip-mobile-secret-dev-only` |
+
+Web and mobile use **separate Keycloak clients** so portal activity (idle lock, refresh, sign-out) does not invalidate the mobile app session. Mobile requests `client_type: mobile` on login/refresh; the portal defaults to `web`.
+
+Mobile client session idle is **1 day** (`client.session.idle.timeout` = 86400s) with `offline_access` for longer-lived refresh when the browser SSO session ends.
 | Bootstrap user | `admin` / `ChangeMe@IIP2026!` (matches `init.sql`) |
 
 ## Start
@@ -23,6 +29,17 @@ docker compose up -d keycloak
 ```
 
 Wait until Keycloak is healthy, then start `iam-svc` with the env vars below (or use defaults).
+
+### Flutter / mobile client (`iip-mobile`)
+
+Realm import runs only on a **fresh** Keycloak data volume. If the portal works but the Flutter app cannot sign in (same username/password), the mobile client is usually missing.
+
+```bash
+chmod +x infra/keycloak/ensure-mobile-client.sh
+./infra/keycloak/ensure-mobile-client.sh
+```
+
+Restart `iam-svc` after changing Keycloak env vars. Sign in again on the phone.
 
 ## Sync existing DB users to Keycloak
 
@@ -51,6 +68,8 @@ KEYCLOAK_SERVER_URL=http://localhost:8081
 KEYCLOAK_REALM=iip
 KEYCLOAK_CLIENT_ID=iip-backend
 KEYCLOAK_CLIENT_SECRET=iip-backend-secret-dev-only
+KEYCLOAK_MOBILE_CLIENT_ID=iip-mobile
+KEYCLOAK_MOBILE_CLIENT_SECRET=iip-mobile-secret-dev-only
 KEYCLOAK_ADMIN_USERNAME=admin
 KEYCLOAK_ADMIN_PASSWORD=admin
 ```

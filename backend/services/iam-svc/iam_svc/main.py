@@ -34,6 +34,7 @@ from .routers import auth as auth_router
 from .routers import mfa as mfa_router
 from .routers import mfa_profile as mfa_profile_router
 from .routers import mobile as mobile_router
+from .routers import mobile_home as mobile_home_router
 from .routers import notifications as notifications_router
 from .routers import security as security_router
 from .routers import profile as profile_router
@@ -49,6 +50,7 @@ from .routers import offices as offices_router
 from .routers import ranks as ranks_router
 from .routers import unit_types as unit_types_router
 from .routers import office_lookups as office_lookups_router
+from .routers import suspect_dossiers as suspect_dossiers_router
 
 settings = BaseServiceSettings(service_name="iam-svc")
 logger = get_logger(__name__)
@@ -194,6 +196,7 @@ def create_app() -> FastAPI:
     app.include_router(privileges_router.router, prefix="/api/v1/iam/privileges", tags=["privileges"])
     app.include_router(access_router.router, prefix="/api/v1/iam/access", tags=["access"])
     app.include_router(mobile_router.router, prefix="/api/v1/mobile", tags=["mobile"])
+    app.include_router(mobile_home_router.router, prefix="/api/v1/mobile", tags=["mobile"])
     app.include_router(offices_router.router, prefix="/api/v1/iam/offices", tags=["offices"])
     app.include_router(
         office_lookups_router.router,
@@ -202,6 +205,11 @@ def create_app() -> FastAPI:
     )
     app.include_router(unit_types_router.router, prefix="/api/v1/iam/unit-types", tags=["unit-types"])
     app.include_router(ranks_router.router, prefix="/api/v1/iam/ranks", tags=["ranks"])
+    app.include_router(
+        suspect_dossiers_router.router,
+        prefix="/api/v1/intelligence/suspect-dossiers",
+        tags=["suspect-dossiers"],
+    )
 
     # ── OpenTelemetry Instrumentation ─────────────────────────────────────────
     FastAPIInstrumentor.instrument_app(app)

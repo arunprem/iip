@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { Camera } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import {
   analyzeSuspectPhoto,
   deleteSuspectDraftPhoto,
@@ -34,6 +34,7 @@ type PhotosUpdater =
 interface SuspectPhotoStepProps {
   draft: SuspectDossierDraft;
   onPhotosChange: (update: PhotosUpdater) => void;
+  onLinkDecision: (decision: SuspectDossierDraft['linkDecision']) => void;
 }
 
 interface CropSession {
@@ -80,7 +81,7 @@ function uploadBusyLabel(
   return elapsedSec > 0 ? `Uploading (${elapsedSec}s)…` : 'Uploading…';
 }
 
-export function SuspectPhotoStep({ draft, onPhotosChange }: SuspectPhotoStepProps) {
+export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision }: SuspectPhotoStepProps) {
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const loadedPreviewKeys = useRef<Set<string>>(new Set());
   const [uploadElapsedSec, setUploadElapsedSec] = useState(0);
@@ -220,6 +221,9 @@ export function SuspectPhotoStep({ draft, onPhotosChange }: SuspectPhotoStepProp
     }
 
     setUploadingSlotId(slot.id);
+    if (isFront) {
+      onLinkDecision(null);
+    }
     patchSlot(slot.id, {
       status: 'uploading',
       previewUrl,
@@ -361,18 +365,21 @@ export function SuspectPhotoStep({ draft, onPhotosChange }: SuspectPhotoStepProp
 
   return (
     <div className="dossier-photo-step">
-      <header className="dossier-photo-step__header">
-        <div className="dossier-photo-step__title-row">
-          <Camera size={18} className="text-iip-primary shrink-0" />
-          <h2 className="text-base font-semibold text-iip-text">Suspect photographs</h2>
-          <span className="dossier-photo-step__pill">
-            {validatedCount}/{draft.photos.length}
+      <div className="dossier-photo-step__toolbar">
+        <div className="dossier-photo-step__toolbar-meta">
+          <span className="dossier-photo-step__count">
+            {validatedCount} of {draft.photos.length} photos
           </span>
+          {hasFront ? (
+            <span className="dossier-photo-step__pill dossier-photo-step__pill--ok">
+              Front ready
+            </span>
+          ) : (
+            <span className="dossier-photo-step__pill dossier-photo-step__pill--req">
+              Front required
+            </span>
+          )}
         </div>
-        <p className="dossier-photo-step__lede">
-          Front face is required for recognition. Crop is recommended; you can upload the original file
-          without cropping from the crop screen.
-        </p>
         {modelsMessage && (
           <p
             className={`dossier-photo-step__status ${
@@ -383,10 +390,17 @@ export function SuspectPhotoStep({ draft, onPhotosChange }: SuspectPhotoStepProp
                   : 'dossier-photo-step__status--wait'
             }`}
           >
+            {modelsReady ? (
+              <CheckCircle2 size={12} className="inline shrink-0 mr-1 -mt-px" />
+            ) : modelsReady === null ? (
+              <AlertCircle size={12} className="inline shrink-0 mr-1 -mt-px" />
+            ) : (
+              <Loader2 size={12} className="inline shrink-0 mr-1 -mt-px animate-spin" />
+            )}
             {modelsMessage}
           </p>
         )}
-      </header>
+      </div>
 
       {frontSlot && (
         <section className="dossier-photo-hero">
@@ -407,20 +421,21 @@ export function SuspectPhotoStep({ draft, onPhotosChange }: SuspectPhotoStepProp
             onFileInputChange={(file) => void handleRawFile(frontSlot, file)}
           />
           <div className="dossier-photo-hero__aside">
-            <p className="text-sm font-medium text-iip-text">
-              {hasFront ? 'Front photo ready' : 'Add front face photo'}
+            <p className="dossier-photo-hero__title">
+              {hasFront ? 'Front photo ready' : 'Upload front face (required)'}
             </p>
-            <p className="text-xs text-iip-text-muted mt-1 leading-relaxed">
-              Tap the frame to choose an image, then crop (or skip crop). Duplicate checks run against{' '}
-              <strong className="font-medium text-iip-text">submitted</strong> dossiers only.
+            <p className="dossier-photo-hero__text">
+              Used for face recognition and duplicate checks on submitted dossiers only. Crop is
+              recommended; you can skip crop from the crop screen if the photo is already framed.
             </p>
-            {frontSlot.status === 'validated' && frontSlot.detectedPose && (
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-2">
+            {frontSlot.status === 'validated' && (
+              <p className="dossier-photo-hero__badge">
+                <CheckCircle2 size={13} />
                 Face verified
-                {frontSlot.detectedPose !== 'FRONT' && (
-                  <span className="text-iip-text-muted">
+                {frontSlot.detectedPose && frontSlot.detectedPose !== 'FRONT' && (
+                  <span className="text-iip-text-muted font-normal">
                     {' '}
-                    (detected {frontSlot.detectedPose})
+                    · detected {frontSlot.detectedPose}
                   </span>
                 )}
               </p>
@@ -432,23 +447,49 @@ export function SuspectPhotoStep({ draft, onPhotosChange }: SuspectPhotoStepProp
       {(frontSlot?.status === 'duplicate' || (frontSlot?.duplicateMatches.length ?? 0) > 0) && (
         <SuspectDuplicateAlert
           matches={frontSlot!.duplicateMatches}
-          acknowledged={frontSlot!.duplicateAcknowledged}
-          onAcknowledge={() =>
+          linkDecision={draft.linkDecision}
+          onConfirmLink={(match) => {
+            const masterSuspectId = match.master_suspect_id ?? match.suspect_id;
+            if (!masterSuspectId) return;
+            onLinkDecision({
+              masterSuspectId,
+              matchedDossierId: match.dossier_id ?? undefined,
+              faceSimilarity: match.similarity_score,
+              matchScore: match.match_score ?? 0,
+              decision: 'CONFIRMED_LINK',
+            });
             patchSlot(frontSlot!.id, {
               duplicateAcknowledged: true,
               status: 'validated',
-            })
-          }
+            });
+          }}
+          onRejectLink={() => {
+            const top = frontSlot!.duplicateMatches[0];
+            const masterSuspectId = top?.master_suspect_id ?? top?.suspect_id ?? '';
+            onLinkDecision({
+              masterSuspectId,
+              faceSimilarity: top?.similarity_score ?? 0,
+              matchScore: 0,
+              decision: 'REJECTED_LINK',
+            });
+            patchSlot(frontSlot!.id, {
+              duplicateAcknowledged: true,
+              status: 'validated',
+            });
+          }}
         />
       )}
 
       <section className="dossier-photo-secondary">
         <p className="dossier-photo-secondary__heading">Additional angles (optional)</p>
         <div className="dossier-photo-secondary__grid">
-          {secondarySlots.map((slot) => (
+          {secondarySlots.map((slot) => {
+            const slotDef = PHOTO_SLOT_DEFS.find((d) => d.poseType === slot.poseType);
+            return (
               <SuspectPhotoAvatarSlot
                 key={slot.id}
                 slot={slot}
+                hint={slotDef?.hint}
                 size="thumb"
                 showInlineError={false}
                 disabled={slotNeedsFaceCheck(slot.poseType) && !faceServiceReady}
@@ -474,7 +515,8 @@ export function SuspectPhotoStep({ draft, onPhotosChange }: SuspectPhotoStepProp
                 onPreviewError={() => handlePreviewError(slot)}
                 onFileInputChange={(file) => void handleRawFile(slot, file)}
               />
-          ))}
+            );
+          })}
         </div>
         {secondarySlots.some((s) => s.status === 'error' && s.errorMessage) && (
           <ul className="dossier-photo-slot-errors" aria-live="polite">

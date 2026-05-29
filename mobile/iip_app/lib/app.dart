@@ -20,10 +20,28 @@ class IipApp extends StatefulWidget {
   State<IipApp> createState() => _IipAppState();
 }
 
-class _IipAppState extends State<IipApp> {
+class _IipAppState extends State<IipApp> with WidgetsBindingObserver {
   bool _nativeSplashRemoved = false;
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   String? _lastShownToastMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    context.read<AuthController>().refreshSessionIfNeeded();
+  }
 
   void _removeNativeSplashOnce() {
     if (_nativeSplashRemoved) return;

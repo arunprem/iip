@@ -20,6 +20,7 @@ export default defineConfig({
     proxy: {
       '/api/v1/auth': { target: 'http://localhost:8010', changeOrigin: true },
       '/api/v1/iam': { target: 'http://localhost:8010', changeOrigin: true },
+      '/api/v1/intelligence': { target: 'http://localhost:8010', changeOrigin: true },
       '/api/v1/captcha': { target: 'http://localhost:8010', changeOrigin: true },
       '/api/v1/notifications': {
         target: 'http://localhost:8010',

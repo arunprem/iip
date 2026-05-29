@@ -29,7 +29,9 @@ from ml_gateway_svc.services.face_pipeline import (
     POSE_RIGHT,
     POSE_RIGHT_PROFILE,
     ALLOWED_POSE_TYPES,
+    FaceInFrameResult,
     FacePipelineError,
+    analyze_all_faces_bytes,
     analyze_image_bytes,
     front_pose_acceptable,
     get_models_status,
@@ -90,6 +92,22 @@ class FaceDeleteResponse(BaseModel):
 class DraftDiscardResponse(BaseModel):
     deleted: bool
     dossier_draft_id: str
+
+
+class IndexSubmittedFaceRequest(BaseModel):
+    suspect_id: str
+    dossier_draft_id: str
+    photo_id: str
+    storage_key: str
+    face_id: str
+    criminal_name: str | None = None
+
+
+class IndexSubmittedFaceResponse(BaseModel):
+    indexed: bool
+    face_id: str
+    suspect_id: str
+    message: str | None = None
 
 
 def _match_to_response(m: FaceDuplicateMatch) -> DuplicateMatchResponse:
@@ -415,6 +433,119 @@ async def analyze_suspect_photo(
     )
 
 
+@router.post("/index-submitted", response_model=IndexSubmittedFaceResponse)
+async def index_submitted_front_face(
+    body: IndexSubmittedFaceRequest,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> IndexSubmittedFaceResponse:
+    """
+    Index a validated front photo after dossier submit (embedding extracted from stored MinIO object).
+    """
+    settings = get_ml_settings()
+    for field_name, value in (
+        ("suspect_id", body.suspect_id),
+        ("dossier_draft_id", body.dossier_draft_id),
+        ("photo_id", body.photo_id),
+        ("face_id", body.face_id),
+    ):
+        try:
+            uuid.UUID(value)
+        except ValueError as exc:
+            raise IIPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error_code=ErrorCode.VALIDATION_ERROR,
+                detail=f"{field_name} must be a valid UUID",
+                meta={"field": field_name},
+            ) from exc
+
+    try:
+        validate_suspect_photo_storage_key(
+            body.dossier_draft_id, body.photo_id, body.storage_key
+        )
+    except ValueError as exc:
+        raise IIPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            error_code=ErrorCode.FORBIDDEN,
+            detail="Invalid storage key for this photo",
+        ) from exc
+
+    storage = get_object_storage()
+    if not storage.enabled:
+        raise IIPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            error_code=ErrorCode.SERVICE_UNAVAILABLE,
+            detail="Photo storage is not available",
+        )
+
+    loaded = await storage.get(body.storage_key)
+    if not loaded:
+        raise IIPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code=ErrorCode.NOT_FOUND,
+            detail="Front photo not found in storage",
+        )
+    image_bytes, _content_type = loaded
+
+    try:
+        analysis = await asyncio.wait_for(
+            asyncio.to_thread(
+                analyze_image_bytes,
+                image_bytes,
+                declared_pose=POSE_FRONT,
+                model_name=settings.face_model_name,
+                detector_backend=settings.face_detector_backend,
+                enforce_single_face=True,
+                extract_embedding=True,
+            ),
+            timeout=float(settings.face_analysis_timeout_seconds),
+        )
+    except TimeoutError as exc:
+        raise IIPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            error_code=ErrorCode.SERVICE_UNAVAILABLE,
+            detail="Face indexing timed out. Try again shortly.",
+        ) from exc
+    except FacePipelineError as exc:
+        raise IIPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail=exc.message,
+            meta={"reason": exc.code, "field": "storage_key"},
+        ) from exc
+
+    indexed = await _face_index.safe_index_face(
+        face_id=body.face_id,
+        photo_id=body.photo_id,
+        dossier_draft_id=body.dossier_draft_id,
+        pose_type=POSE_FRONT,
+        detected_pose=analysis.detected_pose,
+        embedding=analysis.embedding,
+        storage_key=body.storage_key,
+        created_by=current_user.user_id,
+        suspect_id=body.suspect_id,
+        criminal_name=(body.criminal_name or "").strip() or None,
+    )
+
+    message = None
+    if not indexed:
+        message = "Dossier saved but face search index is unavailable — retry indexing later."
+
+    logger.info(
+        "suspect_face_indexed_on_submit",
+        user_id=current_user.user_id,
+        suspect_id=body.suspect_id,
+        face_id=body.face_id,
+        indexed=indexed,
+    )
+
+    return IndexSubmittedFaceResponse(
+        indexed=indexed,
+        face_id=body.face_id,
+        suspect_id=body.suspect_id,
+        message=message,
+    )
+
+
 @router.get("/photos/{photo_id}/image")
 async def get_suspect_photo_image(
     photo_id: str,
@@ -548,6 +679,209 @@ class FaceModelsStatusResponse(BaseModel):
     warmed_at: float | None = None
     warmup_error: str | None = None
     message: str
+
+
+class FaceIdentifyResponse(BaseModel):
+    face_detected: bool
+    face_count: int
+    detected_pose: str
+    matches: list[DuplicateMatchResponse]
+    message: str | None = None
+
+
+class FaceInFrameMatch(BaseModel):
+    face_index: int
+    x: float = Field(description="Normalized left (0–1) in image width")
+    y: float = Field(description="Normalized top (0–1) in image height")
+    w: float = Field(description="Normalized width (0–1)")
+    h: float = Field(description="Normalized height (0–1)")
+    quality_score: float = 0.0
+    matched: bool = False
+    similarity_score: float | None = None
+    match: DuplicateMatchResponse | None = None
+
+
+class FaceIdentifyMultiResponse(BaseModel):
+    image_width: int
+    image_height: int
+    faces: list[FaceInFrameMatch]
+    message: str | None = None
+
+
+@router.post("/identify", response_model=FaceIdentifyResponse)
+async def identify_suspect_face(
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    file: UploadFile = File(...),
+) -> FaceIdentifyResponse:
+    """
+    Field FRS: extract face from a live capture and search submitted dossiers (no draft upload).
+    """
+    settings = get_ml_settings()
+    image_bytes = await file.read()
+    if not image_bytes:
+        raise IIPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="Image file is empty",
+            meta={"field": "file"},
+        )
+    if len(image_bytes) > settings.face_max_upload_bytes:
+        raise IIPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=ErrorCode.PAYLOAD_TOO_LARGE,
+            detail=f"Image must be {settings.face_max_upload_bytes // (1024 * 1024)} MB or smaller",
+            meta={"field": "file"},
+        )
+
+    t0 = time.perf_counter()
+    try:
+        analysis = await asyncio.to_thread(
+            analyze_image_bytes,
+            image_bytes,
+            declared_pose=POSE_FRONT,
+            model_name=settings.face_model_name,
+            detector_backend=settings.face_detector_backend,
+            enforce_single_face=True,
+        )
+    except FacePipelineError as exc:
+        raise IIPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail=exc.message,
+            meta={"reason": exc.code},
+        ) from exc
+
+    if not analysis.face_detected:
+        return FaceIdentifyResponse(
+            face_detected=False,
+            face_count=analysis.face_count,
+            detected_pose=analysis.detected_pose,
+            matches=[],
+            message="No face detected. Use a clear front-facing photo.",
+        )
+
+    duplicate_matches = await _face_index.find_similar_front_faces(
+        analysis.embedding,
+        exclude_dossier_draft_id=None,
+        exclude_face_id=None,
+    )
+    dup_responses = [_match_to_response(m) for m in duplicate_matches]
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+    logger.info(
+        "suspect_face_identify",
+        user_id=current_user.user_id,
+        face_count=analysis.face_count,
+        matches=len(dup_responses),
+        elapsed_ms=elapsed_ms,
+    )
+    message = None
+    if not dup_responses:
+        message = "No matching suspects found in the intelligence index."
+    return FaceIdentifyResponse(
+        face_detected=True,
+        face_count=analysis.face_count,
+        detected_pose=analysis.detected_pose,
+        matches=dup_responses,
+        message=message,
+    )
+
+
+@router.post("/identify-multi", response_model=FaceIdentifyMultiResponse)
+async def identify_multiple_faces(
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    file: UploadFile = File(...),
+) -> FaceIdentifyMultiResponse:
+    """
+    Live field FRS: detect all faces in a camera frame and search each against the index.
+  """
+    settings = get_ml_settings()
+    image_bytes = await file.read()
+    if not image_bytes:
+        raise IIPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="Image file is empty",
+            meta={"field": "file"},
+        )
+    if len(image_bytes) > settings.face_max_upload_bytes:
+        raise IIPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=ErrorCode.PAYLOAD_TOO_LARGE,
+            detail=f"Image must be {settings.face_max_upload_bytes // (1024 * 1024)} MB or smaller",
+            meta={"field": "file"},
+        )
+
+    t0 = time.perf_counter()
+    live_match_min = 0.70
+    try:
+        multi = await asyncio.to_thread(
+            analyze_all_faces_bytes,
+            image_bytes,
+            model_name=settings.face_model_name,
+            detector_backend=settings.face_detector_backend,
+            max_faces=settings.face_live_max_faces,
+            max_side=settings.face_live_max_side,
+        )
+    except FacePipelineError as exc:
+        if exc.code == "no_face_detected":
+            return FaceIdentifyMultiResponse(
+                image_width=0,
+                image_height=0,
+                faces=[],
+                message=exc.message,
+            )
+        raise IIPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail=exc.message,
+            meta={"reason": exc.code},
+        ) from exc
+
+    img_w = max(1, multi.image_width)
+    img_h = max(1, multi.image_height)
+
+    async def _match_one(face: FaceInFrameResult) -> FaceInFrameMatch:
+        duplicate_matches = await _face_index.find_similar_front_faces(
+            face.embedding,
+            exclude_dossier_draft_id=None,
+            exclude_face_id=None,
+            search_k=settings.face_live_search_k,
+            min_score=live_match_min,
+        )
+        top = duplicate_matches[0] if duplicate_matches else None
+        similarity = round(top.score, 4) if top else None
+        matched = bool(top and top.score >= live_match_min)
+        return FaceInFrameMatch(
+            face_index=face.face_index,
+            x=round(face.x / img_w, 4),
+            y=round(face.y / img_h, 4),
+            w=round(face.w / img_w, 4),
+            h=round(face.h / img_h, 4),
+            quality_score=round(face.quality_score, 4),
+            matched=matched,
+            similarity_score=similarity,
+            match=_match_to_response(top) if top and matched else None,
+        )
+
+    faces_out = await asyncio.gather(*[_match_one(face) for face in multi.faces])
+
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+    logger.info(
+        "suspect_face_identify_multi",
+        user_id=current_user.user_id,
+        faces_detected=len(multi.faces),
+        matches=sum(1 for f in faces_out if f.matched),
+        elapsed_ms=elapsed_ms,
+    )
+    message = None
+    if not faces_out:
+        message = "No faces detected. Point the camera at clear front-facing faces."
+    return FaceIdentifyMultiResponse(
+        image_width=multi.image_width,
+        image_height=multi.image_height,
+        faces=faces_out,
+        message=message,
+    )
 
 
 @router.get("/ping", response_model=FaceModelsStatusResponse)

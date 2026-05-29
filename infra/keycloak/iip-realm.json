@@ -11,10 +11,12 @@
   "accessTokenLifespan": 3600,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 86400,
+  "offlineSessionMaxLifespan": 2592000,
   "clients": [
     {
       "clientId": "iip-backend",
-      "name": "IIP Backend API",
+      "name": "IIP Web Portal",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
       "secret": "iip-backend-secret-dev-only",
@@ -25,6 +27,24 @@
       "implicitFlowEnabled": false,
       "protocol": "openid-connect",
       "fullScopeAllowed": true
+    },
+    {
+      "clientId": "iip-mobile",
+      "name": "IIP Mobile App",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "iip-mobile-secret-dev-only",
+      "publicClient": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true,
+      "attributes": {
+        "client.session.idle.timeout": "86400",
+        "client.session.max.lifespan": "2592000"
+      }
     }
   ],
   "users": [

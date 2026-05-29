@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import '../../core/auth/auth_client_type.dart';
+import '../../core/auth/jwt_utils.dart';
 import '../../core/network/api_client.dart';
 import '../../core/security/device_lock_service.dart';
 import '../../core/storage/device_lock_storage.dart';
@@ -34,9 +36,13 @@ class AuthController extends ChangeNotifier {
         deviceLock = deviceLock ?? DeviceLockStorage(),
         _deviceLockService = deviceLockService ?? DeviceLockService(),
         isDark = initialDark ?? true,
-        colors = (initialDark ?? true) ? IipColors.dark : IipColors.light;
+        colors = (initialDark ?? true) ? IipColors.dark : IipColors.light {
+    _api.tokenRefresher = _tryRefreshTokens;
+    _api.onSessionExpired = _handleApiSessionExpired;
+  }
 
   final ApiClient _api;
+  ApiClient get api => _api;
   final TokenStorage _storage;
   final DeviceLockStorage deviceLock;
   final DeviceLockService _deviceLockService;
@@ -56,6 +62,10 @@ class AuthController extends ChangeNotifier {
   String? errorMessage;
   bool isBusy = false;
   int appSessionGeneration = 0;
+  Timer? _proactiveRefreshTimer;
+
+  static const _proactiveRefreshInterval = Duration(seconds: 45);
+  static const _refreshBeforeExpiry = Duration(minutes: 2);
 
   Future<void> bootstrap() async {
     isDark = await _storage.readDarkMode();
@@ -102,6 +112,7 @@ class AuthController extends ChangeNotifier {
     // App lock is local — show unlock before any network call (works when JWT expired).
     if (await deviceLock.isLockActive()) {
       status = AuthStatus.needsDeviceUnlock;
+      _startProactiveRefreshTimer();
       return;
     }
 
@@ -114,6 +125,7 @@ class AuthController extends ChangeNotifier {
         } catch (_) {}
         status = await _resolvePostSignInStatus();
       });
+      _startProactiveRefreshTimer();
       return;
     }
 
@@ -121,13 +133,61 @@ class AuthController extends ChangeNotifier {
       await _fetchUser();
       status = user!.offices.isEmpty ? AuthStatus.unauthenticated : AuthStatus.needsOffice;
     });
+    if (status != AuthStatus.unauthenticated) {
+      _startProactiveRefreshTimer();
+    }
+  }
+
+  void _startProactiveRefreshTimer() {
+    _proactiveRefreshTimer?.cancel();
+    _proactiveRefreshTimer = Timer.periodic(
+      _proactiveRefreshInterval,
+      (_) => unawaited(_proactiveTokenRefresh()),
+    );
+    unawaited(_proactiveTokenRefresh());
+  }
+
+  void _stopProactiveRefreshTimer() {
+    _proactiveRefreshTimer?.cancel();
+    _proactiveRefreshTimer = null;
+  }
+
+  /// Refresh before JWT expiry and when the app returns to foreground.
+  Future<void> refreshSessionIfNeeded() async {
+    if (status == AuthStatus.unauthenticated) return;
+    if (!await _storage.hasStoredSession()) return;
+    await _proactiveTokenRefresh(forceWhenMissing: true);
+  }
+
+  Future<void> _proactiveTokenRefresh({bool forceWhenMissing = false}) async {
+    if (status == AuthStatus.unauthenticated) return;
+
+    var access = await _storage.readAccess();
+    if (access == null || access.isEmpty) {
+      if (forceWhenMissing) await _tryRefreshTokens();
+      return;
+    }
+
+    if (jwtExpiresWithin(access, _refreshBeforeExpiry) || forceWhenMissing) {
+      await _tryRefreshTokens();
+    }
+  }
+
+  Future<void> _handleApiSessionExpired() async {
+    if (status == AuthStatus.unauthenticated) return;
+    _stopProactiveRefreshTimer();
+    await _clearSessionToLogin('Session expired. Please sign in again.');
+    notifyListeners();
   }
 
   Future<bool> _tryRefreshTokens() async {
     final refresh = await _storage.readRefresh();
     if (refresh == null || refresh.isEmpty) return false;
     try {
-      final data = await _api.postJson('/auth/refresh', {'refresh_token': refresh});
+      final data = await _api.postJson('/auth/refresh', {
+        'refresh_token': refresh,
+        'client_type': kAuthClientMobile,
+      });
       final access = data['access_token'] as String?;
       final newRefresh = data['refresh_token'] as String?;
       if (access == null ||
@@ -142,6 +202,12 @@ class AuthController extends ChangeNotifier {
     } catch (_) {
       return false;
     }
+  }
+
+  @override
+  void dispose() {
+    _stopProactiveRefreshTimer();
+    super.dispose();
   }
 
   Future<void> _apiWithRefresh(Future<void> Function() action) async {
@@ -240,6 +306,7 @@ class AuthController extends ChangeNotifier {
     if (officeId != null && officeId.isNotEmpty) {
       status = AuthStatus.authenticated;
       errorMessage = 'Cannot reach server. You are still signed in.';
+      _startProactiveRefreshTimer();
       return true;
     }
 
@@ -247,6 +314,7 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> _clearSessionToLogin(String message) async {
+    _stopProactiveRefreshTimer();
     await _storage.clearTokens();
     await _storage.clearOfficeId();
     _api.setAccessToken(null);
@@ -280,6 +348,7 @@ class AuthController extends ChangeNotifier {
         'password': password,
         'captcha_id': captchaId,
         'captcha_code': captchaCode,
+        'client_type': kAuthClientMobile,
       });
       final result = AuthResult.fromJson(data);
       if (result.isComplete) {
@@ -442,6 +511,7 @@ class AuthController extends ChangeNotifier {
     }
     status = AuthStatus.authenticated;
     errorMessage = null;
+    _startProactiveRefreshTimer();
   }
 
   Future<void> skipDeviceLockSetup() async {
@@ -482,7 +552,7 @@ class AuthController extends ChangeNotifier {
   Future<bool> verifyDeviceLockPin(String pin) => deviceLock.verifyPin(pin);
 
   void _warmProfilePhotoCache() {
-    if (profile?.hasProfilePhoto != true) return;
+    if (!officerHasProfilePhoto) return;
     fetchProfilePhotoBytes().ignore();
   }
 
@@ -568,9 +638,13 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// True when IAM reports a stored profile photo (`/auth/me` or `/auth/me/profile`).
+  bool get officerHasProfilePhoto =>
+      profile?.hasProfilePhoto == true || user?.hasProfilePhoto == true;
+
   bool get hasCachedProfilePhoto {
     final userId = profile?.userId ?? user?.userId;
-    if (userId == null || profile?.hasProfilePhoto != true) return false;
+    if (userId == null || !officerHasProfilePhoto) return false;
     return _memoryPhotoUserId == userId &&
         _memoryPhotoVersion == profilePhotoVersion &&
         _memoryProfilePhoto != null;
@@ -579,7 +653,7 @@ class AuthController extends ChangeNotifier {
   /// Loads profile photo: memory → disk → network (only if cache miss).
   Future<Uint8List?> fetchProfilePhotoBytes({bool forceNetwork = false}) async {
     final userId = profile?.userId ?? user?.userId;
-    if (userId == null || profile?.hasProfilePhoto != true) {
+    if (userId == null || !officerHasProfilePhoto) {
       _clearProfilePhotoMemory();
       return null;
     }
@@ -633,6 +707,7 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _stopProactiveRefreshTimer();
     final userId = profile?.userId ?? user?.userId;
     await _storage.clearTokens();
     await _storage.clearOfficeId();
@@ -665,6 +740,7 @@ class AuthController extends ChangeNotifier {
   Future<void> _finishTokens(String access, String refresh) async {
     await _storage.saveTokens(access: access, refresh: refresh);
     _api.setAccessToken(access);
+    _startProactiveRefreshTimer();
     await _fetchUser();
     if (user!.offices.length == 1) {
       await selectOffice(user!.offices.first.officeId);

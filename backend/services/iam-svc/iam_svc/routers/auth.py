@@ -11,18 +11,20 @@ Handles:
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from iip_core.auth import CurrentUser
 from iip_core.errors import ErrorCode, IIPException
 from iip_core.keycloak import (
+    AuthClientType,
     KeycloakAuthError,
     keycloak_refresh_grant,
     keycloak_token_response,
+    normalize_auth_client_type,
 )
 from iip_core.logging import get_logger
 from iip_core.settings import BaseServiceSettings, get_settings
@@ -46,6 +48,10 @@ class LoginRequest(BaseModel):
     password: str
     captcha_id: str
     captcha_code: str
+    client_type: Literal["web", "mobile"] = Field(
+        default="web",
+        description="web = portal session; mobile = separate Keycloak client (1-day idle)",
+    )
 
 
 class TokenResponse(BaseModel):
@@ -81,6 +87,10 @@ class MeResponse(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+    client_type: Literal["web", "mobile"] = Field(
+        default="web",
+        description="Must match the client that issued the refresh token",
+    )
 
 
 class UnlockRequest(BaseModel):
@@ -88,6 +98,22 @@ class UnlockRequest(BaseModel):
     password: str
     captcha_id: str
     captcha_code: str
+    client_type: Literal["web", "mobile"] = "web"
+
+
+def _keycloak_login_detail(exc: KeycloakAuthError, client_type: str) -> str:
+    msg = str(exc).strip()
+    lower = msg.lower()
+    if client_type == "mobile" and "invalid_client" in lower:
+        return (
+            "Mobile sign-in is not configured in Keycloak. "
+            "Run: ./infra/keycloak/ensure-mobile-client.sh"
+        )
+    if "invalid_grant" in lower or "invalid user" in lower:
+        return "Invalid username or password."
+    if msg:
+        return msg
+    return "Invalid username or password."
 
 
 def _pick_default_office_id(offices: list[OfficeAssignment]) -> str | None:
@@ -135,6 +161,7 @@ async def _authenticate_via_keycloak(
     settings: BaseServiceSettings,
     *,
     purpose: str,
+    client_type: AuthClientType = "web",
 ) -> AuthResultResponse:
     """Ensure IAM user exists locally, validate password with Keycloak, apply MFA gate."""
     repo = UserRepository(db)
@@ -148,13 +175,20 @@ async def _authenticate_via_keycloak(
         )
 
     try:
-        kc_payload = await keycloak_password_grant(username, password, settings)
+        kc_payload = await keycloak_password_grant(
+            username, password, settings, client_type=client_type
+        )
     except KeycloakAuthError as exc:
-        logger.warning("keycloak_login_failed", username=username)
+        logger.warning(
+            "keycloak_login_failed",
+            username=username,
+            client_type=client_type,
+            detail=str(exc),
+        )
         raise IIPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             error_code=ErrorCode.UNAUTHORIZED,
-            detail="Invalid username or password.",
+            detail=_keycloak_login_detail(exc, client_type),
         ) from exc
 
     return await build_auth_result(
@@ -176,8 +210,15 @@ async def login(
 ) -> AuthResultResponse:
     """Captcha + Keycloak password grant; MFA challenge when required."""
     await _validate_captcha(redis, payload.captcha_id, payload.captcha_code)
+    client_type = normalize_auth_client_type(payload.client_type)
     result = await _authenticate_via_keycloak(
-        payload.username, payload.password, db, redis, settings, purpose="login"
+        payload.username,
+        payload.password,
+        db,
+        redis,
+        settings,
+        purpose="login",
+        client_type=client_type,
     )
     if not result.mfa_required:
         logger.info("login_success", username=payload.username)
@@ -192,8 +233,15 @@ async def unlock_session(
     redis: Annotated[Redis | None, Depends(get_redis)],
 ) -> AuthResultResponse:
     await _validate_captcha(redis, payload.captcha_id, payload.captcha_code)
+    client_type = normalize_auth_client_type(payload.client_type)
     result = await _authenticate_via_keycloak(
-        payload.username, payload.password, db, redis, settings, purpose="unlock"
+        payload.username,
+        payload.password,
+        db,
+        redis,
+        settings,
+        purpose="unlock",
+        client_type=client_type,
     )
     if not result.mfa_required:
         logger.info("unlock_success", username=payload.username)
@@ -207,7 +255,10 @@ async def refresh_tokens(
 ) -> TokenResponse:
     """Rotate access token using Keycloak refresh token."""
     try:
-        token_payload = await keycloak_refresh_grant(payload.refresh_token, settings)
+        client_type = normalize_auth_client_type(payload.client_type)
+        token_payload = await keycloak_refresh_grant(
+            payload.refresh_token, settings, client_type=client_type
+        )
     except KeycloakAuthError as exc:
         raise IIPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

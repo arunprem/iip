@@ -42,6 +42,9 @@ const MobileWidgetManagement = React.lazy(() => import('../pages/system/MobileWi
 const UnauthorizedPage   = React.lazy(() => import('../pages/UnauthorizedPage'))
 const SuspectDossierList = React.lazy(() => import('../pages/suspects/SuspectDossierList'))
 const SuspectDossierCreate = React.lazy(() => import('../pages/suspects/SuspectDossierCreate'))
+const SuspectDossierEdit = React.lazy(() => import('../pages/suspects/SuspectDossierEdit'))
+const SuspectDossierDetail = React.lazy(() => import('../pages/suspects/SuspectDossierDetail'))
+const SuspectMasterProfile = React.lazy(() => import('../pages/suspects/SuspectMasterProfile'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -195,6 +198,9 @@ const AuthenticatedLayout = () => {
                 <Route path="/humint-vault" element={<HumintVault />} />
                 <Route path="/suspects" element={<SuspectDossierList />} />
                 <Route path="/suspects/new" element={<SuspectDossierCreate />} />
+                <Route path="/suspects/masters/:masterId" element={<SuspectMasterProfile />} />
+                <Route path="/suspects/:dossierId/edit" element={<SuspectDossierEdit />} />
+                <Route path="/suspects/:dossierId" element={<SuspectDossierDetail />} />
                 <Route path="/iam-admin" element={<IAMAdmin />} />
                 <Route
                   path="/system/roles"

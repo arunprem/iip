@@ -151,6 +151,8 @@ class FaceIndexService:
         *,
         exclude_dossier_draft_id: str | None,
         exclude_face_id: str | None = None,
+        search_k: int | None = None,
+        min_score: float | None = None,
     ) -> list[FaceDuplicateMatch]:
         if not self.enabled:
             return []
@@ -165,7 +167,12 @@ class FaceIndexService:
 
         try:
             return await self._search_similar(
-                es, embedding, exclude_dossier_draft_id, exclude_face_id
+                es,
+                embedding,
+                exclude_dossier_draft_id,
+                exclude_face_id,
+                search_k=search_k,
+                min_score=min_score,
             )
         except ApiError as exc:
             logger.warning("face_similar_search_failed", error=str(exc))
@@ -177,6 +184,9 @@ class FaceIndexService:
         embedding: list[float],
         exclude_dossier_draft_id: str | None,
         exclude_face_id: str | None,
+        *,
+        search_k: int | None = None,
+        min_score: float | None = None,
     ) -> list[FaceDuplicateMatch]:
         # Only compare against submitted dossiers (suspect_id set). Draft uploads are not in the FRS index.
         filters: list[dict[str, Any]] = [
@@ -189,11 +199,12 @@ class FaceIndexService:
         if exclude_face_id:
             must_not.append({"term": {"face_id": exclude_face_id}})
 
+        k = search_k if search_k is not None else self._settings.face_duplicate_search_k
         knn: dict[str, Any] = {
             "field": "face_embedding",
             "query_vector": embedding,
-            "k": self._settings.face_duplicate_search_k,
-            "num_candidates": max(50, self._settings.face_duplicate_search_k * 10),
+            "k": k,
+            "num_candidates": max(20, k * 8),
         }
         if filters or must_not:
             knn["filter"] = {"bool": {"filter": filters, "must_not": must_not}}
@@ -201,7 +212,7 @@ class FaceIndexService:
         response = await es.search(
             index=self._settings.face_index_name,
             knn=knn,
-            size=self._settings.face_duplicate_search_k,
+            size=k,
             _source=[
                 "face_id",
                 "photo_id",
@@ -214,10 +225,10 @@ class FaceIndexService:
         )
 
         matches: list[FaceDuplicateMatch] = []
-        min_score = self._settings.face_match_min_score
+        score_floor = min_score if min_score is not None else self._settings.face_match_min_score
         for hit in response.get("hits", {}).get("hits", []):
             score = float(hit.get("_score") or 0.0)
-            if score < min_score:
+            if score < score_floor:
                 continue
             src = hit.get("_source") or {}
             matches.append(
