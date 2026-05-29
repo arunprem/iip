@@ -9,6 +9,7 @@ import '../suspects/suspect_repository.dart';
 class MapPhotoMarker extends StatefulWidget {
   const MapPhotoMarker({
     super.key,
+    required this.markerId,
     required this.api,
     required this.colors,
     required this.storageKey,
@@ -17,6 +18,7 @@ class MapPhotoMarker extends StatefulWidget {
     this.size = 48,
   });
 
+  final String markerId;
   final ApiClient api;
   final IipColors colors;
   final String? storageKey;
@@ -39,11 +41,25 @@ class _MapPhotoMarkerState extends State<MapPhotoMarker> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(MapPhotoMarker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.markerId != widget.markerId ||
+        oldWidget.storageKey != widget.storageKey) {
+      setState(() => _bytes = null);
+      _load();
+    }
+  }
+
   Future<void> _load() async {
     final key = widget.storageKey;
-    if (key == null || key.isEmpty) return;
+    if (key == null || key.isEmpty) {
+      if (mounted) setState(() => _bytes = null);
+      return;
+    }
     final bytes = await _repo.fetchPhotoBytes(key);
-    if (mounted) setState(() => _bytes = bytes);
+    if (!mounted || widget.storageKey != key) return;
+    setState(() => _bytes = bytes);
   }
 
   @override

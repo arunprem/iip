@@ -33,11 +33,25 @@ class _MapMarkerSheetState extends State<MapMarkerSheet> {
     _loadPhoto();
   }
 
+  @override
+  void didUpdateWidget(MapMarkerSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.marker.markerId != widget.marker.markerId ||
+        oldWidget.marker.storageKey != widget.marker.storageKey) {
+      setState(() => _photoBytes = null);
+      _loadPhoto();
+    }
+  }
+
   Future<void> _loadPhoto() async {
     final key = widget.marker.storageKey;
-    if (key == null || key.isEmpty) return;
+    if (key == null || key.isEmpty) {
+      if (mounted) setState(() => _photoBytes = null);
+      return;
+    }
     final bytes = await SuspectRepository(widget.api).fetchPhotoBytes(key);
-    if (mounted) setState(() => _photoBytes = bytes);
+    if (!mounted || widget.marker.storageKey != key) return;
+    setState(() => _photoBytes = bytes);
   }
 
   @override

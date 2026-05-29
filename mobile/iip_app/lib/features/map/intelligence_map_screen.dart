@@ -107,12 +107,23 @@ class _IntelligenceMapScreenState extends State<IntelligenceMapScreen> {
     }
   }
 
-  void _onMarkerTap(MapMarkerItem marker) {
+  MapMarkerItem? _markerById(String markerId) {
+    for (final m in _markers) {
+      if (m.markerId == markerId) return m;
+    }
+    return null;
+  }
+
+  void _onMarkerTap(String markerId) {
+    final marker = _markerById(markerId);
+    if (marker == null) return;
+
     final auth = context.read<AuthController>();
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => MapMarkerSheet(
+        key: ValueKey(marker.markerId),
         marker: marker,
         colors: auth.colors,
         api: auth.api,
@@ -218,15 +229,19 @@ class _IntelligenceMapScreenState extends State<IntelligenceMapScreen> {
                         markers: [
                           for (final m in _markers)
                             Marker(
+                              key: ValueKey(m.markerId),
                               point: LatLng(m.latitude, m.longitude),
                               width: 52,
                               height: 52,
+                              alignment: Alignment.center,
                               child: MapPhotoMarker(
+                                key: ValueKey('photo-${m.markerId}'),
+                                markerId: m.markerId,
                                 api: auth.api,
                                 colors: colors,
                                 storageKey: m.storageKey,
                                 markerType: m.markerType,
-                                onTap: () => _onMarkerTap(m),
+                                onTap: () => _onMarkerTap(m.markerId),
                               ),
                             ),
                         ],
