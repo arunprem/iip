@@ -1,9 +1,31 @@
 import type { ReactNode } from 'react';
 
+/** Protect phone numbers and long IDs before aggressive line-break normalization. */
+function protectNumericTokens(text: string): { text: string; restore: (s: string) => string } {
+  const tokens: string[] = [];
+  const mark = (value: string) => {
+    const id = tokens.length;
+    tokens.push(value);
+    return `\uE000${id}\uE001`;
+  };
+
+  let out = text.replace(/(?:\+91[\s-]?)?[6-9]\d{9}\b/g, mark);
+  out = out.replace(/\b\d{8,}\b/g, mark);
+
+  return {
+    text: out,
+    restore: (value: string) =>
+      value.replace(/\uE000(\d+)\uE001/g, (_, index) => tokens[Number(index)] ?? ''),
+  };
+}
+
 /** Normalize LLM text that often omits newlines between sections and list items. */
 export function normalizeAssistantContent(raw: string): string {
   let text = raw.replace(/\r\n/g, '\n').trim();
   if (!text) return '';
+
+  const { text: protectedText, restore } = protectNumericTokens(text);
+  text = protectedText;
 
   text = text.replace(/```[\s\S]*?```/g, (block) => block.replace(/\n/g, '\u0000'));
 
@@ -28,7 +50,7 @@ export function normalizeAssistantContent(raw: string): string {
     '$1\n\n'
   );
 
-  text = text.replace(/([a-z0-9\)])(\d+)\.\s+/g, '$1\n$2. ');
+  text = text.replace(/([a-z\)])(\d{1,2})\.\s+/g, '$1\n$2. ');
   text = text.replace(/([a-z])([A-Z][a-z]{2,}(?:\s[A-Z][a-z]+)*:)/g, '$1\n\n$2');
 
   text = text.replace(/:\s*(?=(?:CONFIDENTIAL|SECRET|RESTRICTED|TOP SECRET|UNCLASSIFIED)\b)/gi, ': ');
@@ -36,7 +58,7 @@ export function normalizeAssistantContent(raw: string): string {
   text = text.replace(/\u0000/g, '\n');
   text = text.replace(/\n{3,}/g, '\n\n');
 
-  return text.trim();
+  return restore(text).trim();
 }
 
 type ContentBlock =
@@ -191,7 +213,8 @@ function groupContentBlocks(normalized: string): ContentBlock[] {
 
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g;
+  const pattern =
+    /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|(?:\+91[\s-]?)?[6-9]\d{9}\b|\b\d{10}\b)/g;
   let last = 0;
   let match: RegExpExecArray | null;
   let n = 0;
@@ -213,12 +236,20 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
           {token.slice(1, -1)}
         </code>
       );
-    } else {
+    } else if (token.startsWith('*')) {
       nodes.push(
         <em key={`${keyPrefix}-i-${n++}`} className="text-iip-text-muted">
           {token.slice(1, -1)}
         </em>
       );
+    } else if (/^\d/.test(token) || token.startsWith('+91')) {
+      nodes.push(
+        <span key={`${keyPrefix}-p-${n++}`} className="workbench-contact-value">
+          {token}
+        </span>
+      );
+    } else {
+      nodes.push(token);
     }
     last = match.index + token.length;
   }
@@ -333,6 +364,11 @@ function renderBlock(block: ContentBlock, index: number): ReactNode {
     default:
       return null;
   }
+}
+
+export function renderSuspectNoteText(text: string): ReactNode {
+  const { text: protectedText, restore } = protectNumericTokens(text);
+  return renderInline(restore(protectedText.trim()), 'sn');
 }
 
 export function renderAssistantMarkdown(content: string): ReactNode {

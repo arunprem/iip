@@ -177,3 +177,22 @@ export async function fetchSuspectPhotoPreviewDataUrl(
   });
   return blobToPreviewDataUrl(res.data);
 }
+
+export interface FaceIdentifyResult {
+  face_detected: boolean;
+  face_count: number;
+  detected_pose: string;
+  matches: FaceDuplicateMatch[];
+  message: string | null;
+}
+
+/** Field / workbench FRS — search a photo against submitted suspect dossiers. */
+export async function identifySuspectPhoto(file: File): Promise<FaceIdentifyResult> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiClient.post<FaceIdentifyResult>('/ml/faces/identify', form, {
+    skipSuccessToast: true,
+    timeout: 180_000,
+  });
+  return res.data;
+}

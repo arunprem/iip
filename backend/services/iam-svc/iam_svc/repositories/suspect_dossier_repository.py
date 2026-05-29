@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -29,6 +30,134 @@ from iam_svc.services.suspect_match_scoring import (
     _fuzzy_ratio,
     score_match_candidates,
 )
+
+
+def _digits_only(value: str) -> str:
+    return re.sub(r"\D", "", value)
+
+
+SEARCH_STOP_WORDS = frozenset({
+    "any", "who", "whom", "has", "have", "had", "the", "area", "near", "from", "with",
+    "that", "this", "lives", "live", "living", "located", "address", "locality",
+    "suspect", "suspects", "person", "people", "find", "search", "tell", "about",
+    "please", "give", "need", "name", "names", "linked", "registered", "database",
+    "dossier", "record", "records", "in", "at", "for",
+})
+
+
+def _search_tokens(q: str) -> list[str]:
+    q_clean = q.strip().lower()
+    if not q_clean:
+        return []
+    digits = _digits_only(q_clean)
+    if digits and len(digits) >= 8 and len(digits) == len(re.sub(r"\s", "", q_clean)):
+        return [digits]
+    tokens = [t for t in re.split(r"[\s,]+", q_clean) if len(t) >= 3 and t not in SEARCH_STOP_WORDS]
+    if tokens:
+        return tokens
+    return [q_clean] if len(q_clean) >= 3 else []
+
+
+def _filters_for_token(token: str) -> tuple[list, bool]:
+    term = f"%{token.lower()}%"
+    digits = _digits_only(token)
+
+    addr_fields = (
+        SuspectAddress.house_no,
+        SuspectAddress.house_name,
+        SuspectAddress.street_name,
+        SuspectAddress.locality,
+        SuspectAddress.tehsil,
+        SuspectAddress.village_town_city,
+        SuspectAddress.district,
+        SuspectAddress.state,
+        SuspectAddress.police_station,
+        SuspectAddress.pincode,
+    )
+    address_match = exists(
+        select(1).where(
+            SuspectAddress.suspect_id == Suspect.id,
+            or_(*[func.lower(func.coalesce(col, "")).like(term) for col in addr_fields]),
+        )
+    )
+
+    contact_match = exists(
+        select(1).where(
+            SuspectContact.suspect_id == Suspect.id,
+            func.lower(SuspectContact.value).like(term),
+        )
+    )
+
+    social_match = exists(
+        select(1).where(
+            SuspectSocialAccount.suspect_id == Suspect.id,
+            func.lower(func.coalesce(SuspectSocialAccount.details, "")).like(term),
+        )
+    )
+
+    relative_match = exists(
+        select(1).where(
+            SuspectRelative.suspect_id == Suspect.id,
+            or_(
+                func.lower(SuspectRelative.name).like(term),
+                func.lower(func.coalesce(SuspectRelative.relation, "")).like(term),
+            ),
+        )
+    )
+
+    filters = [
+        func.lower(Suspect.criminal_name).like(term),
+        func.lower(func.coalesce(Suspect.alias_name, "")).like(term),
+        func.lower(func.coalesce(Suspect.fathers_name, "")).like(term),
+        func.lower(func.coalesce(Suspect.place_of_birth, "")).like(term),
+        address_match,
+        contact_match,
+        social_match,
+        relative_match,
+    ]
+
+    used_digit_contact = False
+    if len(digits) >= 6:
+        digit_term = f"%{digits}%"
+        compact_contact = func.replace(
+            func.replace(
+                func.replace(func.coalesce(SuspectContact.value, ""), " ", ""),
+                "-",
+                "",
+            ),
+            "+",
+            "",
+        )
+        filters.append(
+            exists(
+                select(1).where(
+                    SuspectContact.suspect_id == Suspect.id,
+                    or_(
+                        compact_contact.like(digit_term),
+                        SuspectContact.value.like(digit_term),
+                    ),
+                )
+            )
+        )
+        used_digit_contact = True
+
+    return filters, used_digit_contact
+
+
+def _dossier_search_filters(q: str) -> tuple[list, bool]:
+    """Build OR filters for dossier text search; returns (filters, used_digit_contact)."""
+    tokens = _search_tokens(q)
+    if not tokens:
+        return [], False
+
+    groups: list = []
+    used_digit_contact = False
+    for token in tokens:
+        filters, used = _filters_for_token(token)
+        groups.append(or_(*filters))
+        used_digit_contact = used_digit_contact or used
+
+    return [or_(*groups)], used_digit_contact
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -652,19 +781,9 @@ class SuspectDossierRepository:
             count_stmt = count_stmt.where(SuspectDossier.office_id == office_id)
 
         if q and q.strip():
-            term = f"%{q.strip().lower()}%"
-            stmt = stmt.join(Suspect).where(
-                or_(
-                    func.lower(Suspect.criminal_name).like(term),
-                    func.lower(func.coalesce(Suspect.alias_name, "")).like(term),
-                )
-            )
-            count_stmt = count_stmt.join(Suspect).where(
-                or_(
-                    func.lower(Suspect.criminal_name).like(term),
-                    func.lower(func.coalesce(Suspect.alias_name, "")).like(term),
-                )
-            )
+            filters, _ = _dossier_search_filters(q)
+            stmt = stmt.join(Suspect).where(or_(*filters))
+            count_stmt = count_stmt.join(Suspect).where(or_(*filters))
 
         total = int((await self.session.execute(count_stmt)).scalar_one())
         offset = max(0, (page - 1) * page_size)

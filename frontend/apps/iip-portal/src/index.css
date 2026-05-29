@@ -263,6 +263,22 @@
     @apply font-mono text-[0.85em] px-1.5 py-0.5 rounded bg-iip-bg border border-iip-border text-iip-primary;
   }
 
+  .workbench-contact-value {
+    @apply font-mono text-[0.95em] font-medium text-iip-text whitespace-nowrap tracking-wide;
+  }
+
+  .workbench-prose--suspect-note {
+    @apply space-y-1.5;
+  }
+
+  .workbench-suspect-note-p {
+    @apply text-sm text-iip-text leading-relaxed my-0;
+  }
+
+  .workbench-suspect-note-p .workbench-paragraph {
+    @apply my-0 text-sm text-iip-text;
+  }
+
   .workbench-code-block {
     @apply my-3 p-3 rounded-lg bg-iip-bg border border-iip-border overflow-x-auto text-xs font-mono leading-relaxed;
   }
@@ -1663,6 +1679,18 @@
 
   .suspect-thumb--list {
     @apply w-12 h-[3.6rem] rounded-md;
+  }
+
+  .workbench-chat-suspect-thumb.suspect-thumb--list {
+    @apply w-full h-[3.6rem];
+  }
+
+  .workbench-suspect-card__thumb.suspect-thumb--list {
+    @apply w-[4.5rem] h-[5.5rem] rounded-lg border-2 border-[#1a1a1a];
+  }
+
+  .workbench-suspect-card__thumb--empty {
+    @apply w-[4.5rem] h-[5.5rem] rounded-lg border border-iip-border bg-iip-bg/40;
   }
 
   .suspect-thumb--mugshot {
