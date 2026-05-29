@@ -41,6 +41,7 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
   bool _scanLoopActive = false;
   String? _scanStatus;
   final Map<String, Uint8List> _thumbCache = {};
+  final List<FrsLiveFaceMatch> _pinnedMatches = [];
 
   @override
   void initState() {
@@ -109,16 +110,21 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
         _lastScan = hasFaces ? result : null;
         _lastImageWidth = hasFaces ? result.imageWidth : 0;
         _lastImageHeight = hasFaces ? result.imageHeight : 0;
-        _scanStatus = hasFaces
-            ? '${result.faces.length} face(s) · ${result.highConfidenceMatches.length} match(es) ≥$kFrsLiveMatchPercent%'
-            : (result.message ?? 'No faces in view');
+        if (hasFaces) {
+          _mergePinnedMatches(result.highConfidenceMatches);
+        }
+        _scanStatus = _buildScanStatus(result, hasFaces);
       });
 
       if (hasFaces) {
         unawaited(_repo.enrichLiveMatches(result).then((_) {
-          if (mounted) setState(() {});
+          if (!mounted) return;
+          setState(() {
+            _mergePinnedMatches(result.highConfidenceMatches);
+          });
         }));
-        unawaited(_loadThumbsForMatches(result));
+        unawaited(_loadThumbsForMatches(result.highConfidenceMatches));
+        unawaited(_loadThumbsForMatches(_pinnedMatches));
       }
     } catch (_) {
       if (!mounted) return;
@@ -136,8 +142,64 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
     }
   }
 
-  Future<void> _loadThumbsForMatches(FrsLiveScanResult result) async {
-    for (final face in result.highConfidenceMatches) {
+  String _matchKey(FrsLiveFaceMatch face) {
+    final match = face.match;
+    if (match == null) return '';
+    if (match.faceId.isNotEmpty) return match.faceId;
+    final dossierId = match.dossierId?.trim();
+    if (dossierId != null && dossierId.isNotEmpty) return 'd:$dossierId';
+    final suspectId = match.suspectId?.trim();
+    if (suspectId != null && suspectId.isNotEmpty) return 's:$suspectId';
+    final storageKey = match.storageKey?.trim();
+    if (storageKey != null && storageKey.isNotEmpty) return 'k:$storageKey';
+    return '';
+  }
+
+  void _mergePinnedMatches(List<FrsLiveFaceMatch> matches) {
+    for (final face in matches) {
+      if (!face.isHighConfidenceMatch) continue;
+      final key = _matchKey(face);
+      if (key.isEmpty) continue;
+
+      final index = _pinnedMatches.indexWhere((p) => _matchKey(p) == key);
+      if (index >= 0) {
+        if (face.matchPercent >= _pinnedMatches[index].matchPercent) {
+          _pinnedMatches[index] = face;
+        }
+      } else {
+        _pinnedMatches.add(face);
+      }
+    }
+  }
+
+  String _buildScanStatus(FrsLiveScanResult result, bool hasFaces) {
+    if (hasFaces) {
+      final live = result.highConfidenceMatches.length;
+      final pinned = _pinnedMatches.length;
+      if (live > 0) {
+        return '${result.faces.length} face(s) · $live live match(es) · $pinned saved';
+      }
+      return '${result.faces.length} face(s) · $pinned saved match(es)';
+    }
+    if (_pinnedMatches.isNotEmpty) {
+      return 'No faces in view · ${_pinnedMatches.length} saved match(es)';
+    }
+    return result.message ?? 'No faces in view';
+  }
+
+  void _removePinnedMatch(String key) {
+    setState(() {
+      _pinnedMatches.removeWhere((face) => _matchKey(face) == key);
+      if (_lastScan == null) {
+        _scanStatus = _pinnedMatches.isEmpty
+            ? 'Point camera at faces…'
+            : 'No faces in view · ${_pinnedMatches.length} saved match(es)';
+      }
+    });
+  }
+
+  Future<void> _loadThumbsForMatches(List<FrsLiveFaceMatch> matches) async {
+    for (final face in matches) {
       final match = face.match;
       final key = match?.storageKey;
       if (key == null || key.isEmpty || _thumbCache.containsKey(key)) continue;
@@ -271,9 +333,11 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
                     ),
                     _MatchTray(
                       colors: colors,
-                      matches: _lastScan?.highConfidenceMatches ?? [],
+                      matches: _pinnedMatches,
                       thumbCache: _thumbCache,
                       onTap: _openMatch,
+                      onRemove: _removePinnedMatch,
+                      matchKey: _matchKey,
                     ),
                   ],
                 ),
@@ -451,12 +515,16 @@ class _MatchTray extends StatelessWidget {
     required this.matches,
     required this.thumbCache,
     required this.onTap,
+    required this.onRemove,
+    required this.matchKey,
   });
 
   final IipColors colors;
   final List<FrsLiveFaceMatch> matches;
   final Map<String, Uint8List> thumbCache;
   final void Function(FrsLiveFaceMatch) onTap;
+  final void Function(String key) onRemove;
+  final String Function(FrsLiveFaceMatch face) matchKey;
 
   @override
   Widget build(BuildContext context) {
@@ -471,8 +539,8 @@ class _MatchTray extends StatelessWidget {
         children: [
           Text(
             matches.isEmpty
-                ? 'Matches (≥$kFrsLiveMatchPercent%)'
-                : 'Matches (≥$kFrsLiveMatchPercent%) — tap to open dossier',
+                ? 'Identified matches (≥$kFrsLiveMatchPercent%)'
+                : 'Identified matches — tap to open, × to remove',
             style: TextStyle(color: colors.text, fontWeight: FontWeight.w600, fontSize: 13),
           ),
           const SizedBox(height: 8),
@@ -482,7 +550,7 @@ class _MatchTray extends StatelessWidget {
                 ? Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'No matches at ≥$kFrsLiveMatchPercent% in the current view.',
+                      'Matches stay here after identification until you remove them.',
                       style: TextStyle(color: colors.textMuted, fontSize: 12),
                     ),
                   )
@@ -495,62 +563,89 @@ class _MatchTray extends StatelessWidget {
                       final match = face.match!;
                       final key = match.storageKey;
                       final bytes = key != null ? thumbCache[key] : null;
+                      final id = matchKey(face);
                       return Material(
                         color: colors.surfaceHover,
                         borderRadius: BorderRadius.circular(12),
                         clipBehavior: Clip.antiAlias,
-                        child: InkWell(
-                          onTap: () => onTap(face),
-                          child: SizedBox(
-                            width: 200,
-                            child: Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Row(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: SizedBox(
-                                      width: 52,
-                                      height: 52,
-                                      child: bytes != null
-                                          ? Image.memory(bytes, fit: BoxFit.cover)
-                                          : ColoredBox(
-                                              color: colors.primary.withValues(alpha: 0.1),
-                                              child: Icon(Icons.person, color: colors.primary),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            InkWell(
+                              onTap: () => onTap(face),
+                              child: SizedBox(
+                                width: 200,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Row(
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: SizedBox(
+                                          width: 52,
+                                          height: 52,
+                                          child: bytes != null
+                                              ? Image.memory(bytes, fit: BoxFit.cover)
+                                              : ColoredBox(
+                                                  color: colors.primary.withValues(alpha: 0.1),
+                                                  child: Icon(Icons.person, color: colors.primary),
+                                                ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              match.criminalName ?? 'Unknown',
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: colors.text,
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 12,
+                                              ),
                                             ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          match.criminalName ?? 'Unknown',
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: colors.text,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                          ),
+                                            Text(
+                                              '${face.matchPercent}% match',
+                                              style: TextStyle(
+                                                color: colors.error,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        Text(
-                                          '${face.matchPercent}% match',
-                                          style: TextStyle(
-                                            color: colors.error,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
                             ),
-                          ),
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: Material(
+                                color: colors.surface,
+                                shape: const CircleBorder(),
+                                elevation: 2,
+                                child: InkWell(
+                                  customBorder: const CircleBorder(),
+                                  onTap: id.isEmpty ? null : () => onRemove(id),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(4),
+                                    child: Icon(
+                                      Icons.close_rounded,
+                                      size: 16,
+                                      color: colors.textMuted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     },
