@@ -59,7 +59,7 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
       final camera = back.isNotEmpty ? back.first : cameras.first;
       final controller = CameraController(
         camera,
-        ResolutionPreset.low,
+        ResolutionPreset.high,
         enableAudio: false,
         imageFormatGroup: Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.jpeg,
       );
@@ -385,12 +385,17 @@ class _LegendBar extends StatelessWidget {
           if (scanStatus != null)
             Text(scanStatus!, style: const TextStyle(color: Colors.white, fontSize: 12)),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              _LegendDot(color: Colors.redAccent, label: '≥$kFrsLiveMatchPercent% match'),
-              const SizedBox(width: 12),
-              const _LegendDot(color: Colors.greenAccent, label: 'Face, no match'),
-            ],
+          const SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _LegendDot(color: Colors.redAccent, label: '≥80% match'),
+                SizedBox(width: 12),
+                _LegendDot(color: Colors.orangeAccent, label: '75-79% match'),
+                SizedBox(width: 12),
+                _LegendDot(color: Colors.greenAccent, label: 'Face, no match'),
+              ],
+            ),
           ),
         ],
       ),
@@ -475,9 +480,17 @@ class _FaceBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMatch = face.isHighConfidenceMatch;
-    final color = isMatch ? Colors.redAccent : Colors.greenAccent;
-    final borderWidth = isMatch ? 4.0 : 3.0;
+    final isHighMatch = face.match != null && face.matchPercent >= 80;
+    final isMediumMatch = face.match != null && face.matchPercent >= 75 && face.matchPercent < 80;
+    final hasMatch = isHighMatch || isMediumMatch;
+
+    final color = isHighMatch
+        ? Colors.redAccent
+        : isMediumMatch
+            ? Colors.orangeAccent
+            : Colors.greenAccent;
+
+    final borderWidth = hasMatch ? 4.0 : 3.0;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -487,7 +500,7 @@ class _FaceBox extends StatelessWidget {
             border: Border.all(color: color, width: borderWidth),
           ),
         ),
-        if (isMatch)
+        if (hasMatch)
           Positioned(
             left: 0,
             top: -22,

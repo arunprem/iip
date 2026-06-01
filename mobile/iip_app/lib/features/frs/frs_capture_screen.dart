@@ -11,6 +11,7 @@ import '../../models/frs_match.dart';
 import '../auth/auth_controller.dart';
 import '../suspects/suspect_dossier_detail_screen.dart';
 import '../suspects/suspect_repository.dart';
+import 'frs_photo_crop_screen.dart';
 import 'frs_repository.dart';
 
 /// Field face recognition — capture and match against submitted dossiers.
@@ -47,12 +48,24 @@ class _FrsCaptureScreenState extends State<FrsCaptureScreen> {
     );
     if (file == null || !mounted) return;
     final bytes = await file.readAsBytes();
+
+    if (!mounted) return;
+    final colors = context.read<AuthController>().colors;
+
+    final croppedBytes = await context.pushSmooth<Uint8List>(
+      FrsPhotoCropScreen(
+        imageBytes: bytes,
+        colors: colors,
+      ),
+    );
+    if (croppedBytes == null || !mounted) return;
+
     setState(() {
-      _capture = bytes;
+      _capture = croppedBytes;
       _result = null;
       _error = null;
     });
-    await _runMatch(bytes);
+    await _runMatch(croppedBytes);
   }
 
   Future<void> _runMatch(Uint8List bytes) async {
@@ -159,25 +172,17 @@ class _FrsCaptureScreenState extends State<FrsCaptureScreen> {
               borderRadius: BorderRadius.circular(16),
               child: AspectRatio(
                 aspectRatio: 3 / 4,
-                child: Image.memory(_capture!, fit: BoxFit.cover),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.memory(_capture!, fit: BoxFit.cover),
+                    if (_busy) const _AiScanningOverlay(),
+                  ],
+                ),
               ),
             )
           else
-            Container(
-              height: 220,
-              decoration: BoxDecoration(
-                color: colors.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: colors.border),
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.face_retouching_natural,
-                  size: 64,
-                  color: colors.primary.withValues(alpha: 0.85),
-                ),
-              ),
-            ),
+            _ModernAiPlaceholder(colors: colors),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: _busy ? null : _takePhoto,
@@ -452,4 +457,270 @@ class _MatchCardState extends State<_MatchCard> {
       ),
     );
   }
+}
+
+/// Futuristic AI glowing grid and scanning bar overlay for active searches.
+class _AiScanningOverlay extends StatefulWidget {
+  const _AiScanningOverlay();
+
+  @override
+  State<_AiScanningOverlay> createState() => _AiScanningOverlayState();
+}
+
+class _AiScanningOverlayState extends State<_AiScanningOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.35),
+              ),
+            ),
+            const _GridCorners(),
+            Align(
+              alignment: Alignment(0.0, _controller.value * 2 - 1),
+              child: Container(
+                width: double.infinity,
+                height: 4,
+                decoration: BoxDecoration(
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.cyanAccent.withValues(alpha: 0.85),
+                      blurRadius: 16,
+                      spreadRadius: 3,
+                    ),
+                  ],
+                  gradient: const LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      Colors.cyanAccent,
+                      Colors.transparent,
+                    ],
+                    stops: [0.0, 0.5, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _GridCorners extends StatelessWidget {
+  const _GridCorners();
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: CustomPaint(
+        painter: _GridCornerPainter(),
+      ),
+    );
+  }
+}
+
+class _GridCornerPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.cyanAccent
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke;
+
+    const length = 20.0;
+
+    canvas.drawLine(Offset.zero, const Offset(length, 0), paint);
+    canvas.drawLine(Offset.zero, const Offset(0, length), paint);
+
+    canvas.drawLine(Offset(size.width, 0), Offset(size.width - length, 0), paint);
+    canvas.drawLine(Offset(size.width, 0), Offset(size.width, length), paint);
+
+    canvas.drawLine(Offset(0, size.height), Offset(length, size.height), paint);
+    canvas.drawLine(Offset(0, size.height), Offset(0, size.height - length), paint);
+
+    canvas.drawLine(Offset(size.width, size.height), Offset(size.width - length, size.height), paint);
+    canvas.drawLine(Offset(size.width, size.height), Offset(size.width, size.height - length), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// A modern biometric AI scan target placeholder for portrait captures.
+class _ModernAiPlaceholder extends StatelessWidget {
+  const _ModernAiPlaceholder({required this.colors});
+
+  final IipColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 280,
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colors.border, width: 1.5),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colors.surface,
+            colors.surfaceHover.withValues(alpha: 0.85),
+          ],
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _BiometricGridPainter(color: colors.primary.withValues(alpha: 0.08)),
+              ),
+            ),
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _ViewfinderPainter(color: colors.primary),
+              ),
+            ),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 76,
+                    height: 76,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: colors.primary.withValues(alpha: 0.08),
+                      border: Border.all(
+                        color: colors.primary.withValues(alpha: 0.35),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.face_unlock_rounded,
+                        size: 38,
+                        color: colors.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'AI BIOMETRIC CAPTURE',
+                    style: TextStyle(
+                      color: colors.text,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.8,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Position face in the center frame',
+                    style: TextStyle(
+                      color: colors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BiometricGridPainter extends CustomPainter {
+  const _BiometricGridPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+
+    const step = 24.0;
+    for (double y = 0; y < size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+    for (double x = 0; x < size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+
+    final center = Offset(size.width / 2, size.height / 2);
+    canvas.drawCircle(center, 90, paint);
+    canvas.drawCircle(center, 130, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _ViewfinderPainter extends CustomPainter {
+  const _ViewfinderPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.75)
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke;
+
+    const margin = 20.0;
+    const length = 16.0;
+
+    const left = margin;
+    const top = margin;
+    final right = size.width - margin;
+    final bottom = size.height - margin;
+
+    canvas.drawLine(Offset(left, top), Offset(left + length, top), paint);
+    canvas.drawLine(Offset(left, top), Offset(left, top + length), paint);
+
+    canvas.drawLine(Offset(right, top), Offset(right - length, top), paint);
+    canvas.drawLine(Offset(right, top), Offset(right, top + length), paint);
+
+    canvas.drawLine(Offset(left, bottom), Offset(left + length, bottom), paint);
+    canvas.drawLine(Offset(left, bottom), Offset(left, bottom - length), paint);
+
+    canvas.drawLine(Offset(right, bottom), Offset(right - length, bottom), paint);
+    canvas.drawLine(Offset(right, bottom), Offset(right, bottom - length), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -107,6 +107,25 @@ export default function SuspectDossierCreate() {
     return () => window.clearTimeout(t);
   }, [draft]);
 
+  const handleStepClick = (targetStep: WizardStepId) => {
+    const targetIndex = WIZARD_STEPS.findIndex((s) => s.id === targetStep);
+    const photoIndex = WIZARD_STEPS.findIndex((s) => s.id === 'photo');
+    if (targetIndex > photoIndex) {
+      const block = photosStepBlockedReason(draft);
+      if (block) {
+        showToast('warning', block);
+        return;
+      }
+    }
+    const identityIndex = WIZARD_STEPS.findIndex((s) => s.id === 'identity');
+    if (targetIndex > identityIndex && !draft.criminalName.trim()) {
+      showToast('warning', 'Criminal name is required before continuing.');
+      return;
+    }
+    setStep(targetStep);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const goNext = () => {
     if (step === 'photo') {
       const block = photosStepBlockedReason(draft);
@@ -230,6 +249,7 @@ export default function SuspectDossierCreate() {
               }));
             }}
             onLinkDecision={(linkDecision) => patchDraft({ linkDecision })}
+            onGeoTagChange={(photoGeoTag) => patchDraft({ photoGeoTag })}
           />
         );
       case 'identity':
@@ -245,6 +265,7 @@ export default function SuspectDossierCreate() {
             onHasDifferentPresentChange={(hasDifferentPresentAddress) =>
               patchDraft({ hasDifferentPresentAddress })
             }
+            photoGeoTag={draft.photoGeoTag}
           />
         );
       case 'contacts':
@@ -272,7 +293,7 @@ export default function SuspectDossierCreate() {
         return (
           <SuspectReviewStep
             draft={draft}
-            onEditStep={setStep}
+            onEditStep={handleStepClick}
             onLinkDecision={(linkDecision) => patchDraft({ linkDecision })}
           />
         );
@@ -305,7 +326,7 @@ export default function SuspectDossierCreate() {
         <SuspectWizardStepper
           currentStep={step}
           completed={completed}
-          onStepClick={setStep}
+          onStepClick={handleStepClick}
         />
 
         <div className="dossier-wizard-shell">

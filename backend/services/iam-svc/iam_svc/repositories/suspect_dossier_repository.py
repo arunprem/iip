@@ -538,6 +538,48 @@ class SuspectDossierRepository:
                 )
             )
 
+        # Sync photos
+        if "photos" in payload:
+            existing_photos = {p.photo_id: p for p in suspect.photos}
+            new_photos = {uuid.UUID(str(p["photo_id"])): p for p in payload["photos"] if p.get("storage_key")}
+            
+            # Delete photos that are no longer present
+            for pid, photo in list(existing_photos.items()):
+                if pid not in new_photos:
+                    await self.session.delete(photo)
+            
+            # Add or update new photos
+            for sort_order, (pid, photo_data) in enumerate(new_photos.items()):
+                face_id_raw = photo_data.get("face_id")
+                face_id = uuid.UUID(str(face_id_raw)) if face_id_raw else None
+                
+                if pid in existing_photos:
+                    # Update existing photo fields if changed
+                    photo = existing_photos[pid]
+                    photo.pose_type = str(photo_data.get("pose_type") or "OTHER").upper()
+                    photo.storage_key = str(photo_data["storage_key"])
+                    photo.face_id = face_id
+                    photo.detected_pose = _optional_str(photo_data.get("detected_pose"))
+                    photo.face_detected = bool(photo_data.get("face_detected"))
+                    photo.face_count = photo_data.get("face_count")
+                    photo.sort_order = sort_order
+                else:
+                    # Insert new photo
+                    self.session.add(
+                        SuspectPhoto(
+                            suspect_id=suspect.id,
+                            dossier_id=dossier.id,
+                            photo_id=pid,
+                            pose_type=str(photo_data.get("pose_type") or "OTHER").upper(),
+                            storage_key=str(photo_data["storage_key"]),
+                            face_id=face_id,
+                            detected_pose=_optional_str(photo_data.get("detected_pose")),
+                            face_detected=bool(photo_data.get("face_detected")),
+                            face_count=photo_data.get("face_count"),
+                            sort_order=sort_order,
+                        )
+                    )
+
         await self.session.flush()
         return dossier
 

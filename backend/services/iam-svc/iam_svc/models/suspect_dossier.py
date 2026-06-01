@@ -226,3 +226,25 @@ class SuspectPhoto(Base):
     dossier: Mapped["SuspectDossier"] = relationship(
         "SuspectDossier", back_populates="photos", lazy="selectin"
     )
+
+
+class QuickSuspectCapture(Base):
+    __tablename__ = "quick_suspect_captures"
+    __table_args__ = {"schema": "intelligence"}
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
+    captured_by: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("iam.users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+    used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+

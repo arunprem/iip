@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/motion/iip_page_route.dart';
 import '../../core/theme/iip_colors.dart';
+import '../suspects/quick_suspect_gallery_screen.dart';
 import 'frs_capture_screen.dart';
 import 'frs_live_screen.dart';
 
@@ -53,7 +54,11 @@ Future<void> showFrsModeSheet(BuildContext context, {required IipColors colors})
                 subtitle: 'Detect multiple faces from the camera feed',
                 onTap: () {
                   Navigator.pop(ctx);
-                  context.pushSmooth(const FrsLiveScreen());
+                  Future.delayed(const Duration(milliseconds: 150), () {
+                    if (context.mounted) {
+                      context.pushSmooth(const FrsLiveScreen());
+                    }
+                  });
                 },
               ),
               const SizedBox(height: 10),
@@ -64,7 +69,26 @@ Future<void> showFrsModeSheet(BuildContext context, {required IipColors colors})
                 subtitle: 'Take one photo and search the index',
                 onTap: () {
                   Navigator.pop(ctx);
-                  context.pushSmooth(const FrsCaptureScreen());
+                  Future.delayed(const Duration(milliseconds: 150), () {
+                    if (context.mounted) {
+                      context.pushSmooth(const FrsCaptureScreen());
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              _ModeTile(
+                colors: colors,
+                icon: Icons.auto_awesome_motion_rounded,
+                title: 'Quick suspect gallery',
+                subtitle: 'Capture offline suspect photos and sync later',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Future.delayed(const Duration(milliseconds: 150), () {
+                    if (context.mounted) {
+                      context.pushSmooth(const QuickSuspectGalleryScreen());
+                    }
+                  });
                 },
               ),
             ],

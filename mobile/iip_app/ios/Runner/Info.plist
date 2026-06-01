@@ -67,6 +67,11 @@
 	<string>Allow photo library access to choose your profile photo.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Allow location access to find suspects near your current position.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

@@ -42,6 +42,14 @@ iam-svc-dev:
 		--reload-dir iam_svc \
 		--reload-dir ../../libs/iip-core/iip_core
 
+# ML gateway — LLM chat + face recognition (Analyst Workbench photo search, FRS)
+ml-gateway-dev:
+	cd backend/services/ml-gateway-svc && uv run uvicorn ml_gateway_svc.main:app \
+		--host 0.0.0.0 --port 8020 --reload \
+		--reload-dir ml_gateway_svc \
+		--reload-dir ../../libs/iip-core/iip_core \
+		--reload-dir ../../libs/iip-llm/iip_llm
+
 # Flutter mobile app (requires Flutter SDK). Android emulator: use 10.0.2.2 for localhost.
 mobile-bootstrap:
 	cd mobile/iip_app && flutter create . --project-name iip_app --org gov.in.iip
@@ -62,10 +70,10 @@ run: docker-up
 	pnpm --filter iip-portal run dev & \
 	KEYCLOAK_SERVER_URL=http://localhost:8081 \
 	KEYCLOAK_ENABLED=true \
-	uv run uvicorn backend.services.iam-svc.iam_svc.main:app --port 8010 & \
+	uv run uvicorn backend.services.iam-svc.iam_svc.main:app --host 0.0.0.0 --port 8010 & \
 	KEYCLOAK_SERVER_URL=http://localhost:8081 \
 	KEYCLOAK_ENABLED=true \
-	uv run uvicorn backend.services.ml-gateway-svc.ml_gateway_svc.main:app --port 8020 & \
+	uv run uvicorn backend.services.ml-gateway-svc.ml_gateway_svc.main:app --host 0.0.0.0 --port 8020 & \
 	wait
 
 # ─── Build & Sign ─────────────────────────────────────────────────────────────

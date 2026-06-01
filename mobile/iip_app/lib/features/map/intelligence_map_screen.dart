@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -14,6 +16,7 @@ import 'map_marker_sheet.dart';
 import 'map_photo_marker.dart';
 import 'map_repository.dart';
 import 'map_zoom.dart';
+import 'user_location_map_marker.dart';
 
 /// Operational map — suspects with photo pins (~800 m viewport).
 class IntelligenceMapScreen extends StatefulWidget {
@@ -31,6 +34,10 @@ class _IntelligenceMapScreenState extends State<IntelligenceMapScreen> {
 
   List<MapMarkerItem> _markers = [];
   LatLng? _center;
+  LatLng? _userLocation;
+  Uint8List? _userPhotoBytes;
+  bool _loadingUserPhoto = false;
+  bool _locationAvailable = false;
   bool _loading = true;
   String? _error;
 
@@ -38,7 +45,37 @@ class _IntelligenceMapScreenState extends State<IntelligenceMapScreen> {
   void initState() {
     super.initState();
     _repo = MapRepository(context.read<AuthController>().api);
+    _loadUserPhoto();
     _load();
+  }
+
+  String _userInitials(AuthController auth) {
+    final name = auth.profile?.fullName ?? auth.user?.fullName ?? '?';
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2) {
+      return '${parts.first[0]}${parts[1][0]}'.toUpperCase();
+    }
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
+  }
+
+  Future<void> _loadUserPhoto() async {
+    final auth = context.read<AuthController>();
+    if (!auth.officerHasProfilePhoto) {
+      if (mounted) setState(() => _userPhotoBytes = null);
+      return;
+    }
+    setState(() => _loadingUserPhoto = true);
+    try {
+      final bytes = await auth.fetchProfilePhotoBytes();
+      if (mounted) {
+        setState(() {
+          _userPhotoBytes = bytes;
+          _loadingUserPhoto = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingUserPhoto = false);
+    }
   }
 
   Future<void> _load() async {
@@ -68,15 +105,18 @@ class _IntelligenceMapScreenState extends State<IntelligenceMapScreen> {
         radiusM: _viewportRadiusM,
       );
       if (!mounted) return;
-      final center = lat != null && lon != null
-          ? LatLng(lat, lon)
-          : markers.isNotEmpty
+      final hasGps = lat != null && lon != null;
+      final userPoint = hasGps ? LatLng(lat, lon) : null;
+      final center = userPoint ??
+          (markers.isNotEmpty
               ? LatLng(markers.first.latitude, markers.first.longitude)
-              : const LatLng(10.8505, 76.2711);
+              : const LatLng(10.8505, 76.2711));
 
       setState(() {
         _markers = markers;
         _center = center;
+        _userLocation = userPoint;
+        _locationAvailable = hasGps;
         _loading = false;
       });
 
@@ -208,19 +248,20 @@ class _IntelligenceMapScreenState extends State<IntelligenceMapScreen> {
                         urlTemplate: _tileUrl(isDark),
                         userAgentPackageName: 'gov.in.iip.iip_app',
                       ),
-                      if (_center != null)
+                      if (_userLocation != null)
                         MarkerLayer(
                           markers: [
                             Marker(
-                              point: _center!,
-                              width: 20,
-                              height: 20,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: colors.primary.withValues(alpha: 0.25),
-                                  border: Border.all(color: colors.primary, width: 2),
-                                ),
+                              key: const ValueKey('user-location'),
+                              point: _userLocation!,
+                              width: 56,
+                              height: 56,
+                              alignment: Alignment.center,
+                              child: UserLocationMapMarker(
+                                colors: colors,
+                                initials: _userInitials(auth),
+                                photoBytes: _userPhotoBytes,
+                                isLoadingPhoto: _loadingUserPhoto,
                               ),
                             ),
                           ],
@@ -276,7 +317,10 @@ class _IntelligenceMapScreenState extends State<IntelligenceMapScreen> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       child: Text(
-                        '${_markers.length} within ${_viewportRadiusM.round()} m · Photo pins = suspects',
+                        _locationAvailable
+                            ? '${_markers.length} suspects within ${_viewportRadiusM.round()} m · '
+                                'Green = you · Blue = suspects'
+                            : '${_markers.length} pins · Enable location to see yourself on the map',
                         style: TextStyle(color: colors.textMuted, fontSize: 12),
                       ),
                     ),

@@ -105,6 +105,9 @@ class ApiClient {
   Future<http.Response> _patch(Uri uri, {Map<String, String>? headers, Object? body}) =>
       _client.patch(uri, headers: headers, body: body).timeout(_timeout);
 
+  Future<http.Response> _delete(Uri uri, {Map<String, String>? headers}) =>
+      _client.delete(uri, headers: headers).timeout(_timeout);
+
   Future<Map<String, dynamic>> getJson(String path) async {
     return _withAuthRetry(path, () async {
       final response = await _get(
@@ -140,6 +143,17 @@ class ApiClient {
   Future<void> patchNoContent(String path) async {
     await _withAuthRetry(path, () async {
       final response = await _patch(
+        Uri.parse('${AppConfig.baseUrl}$path'),
+        headers: _headers(),
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) return;
+      throw ApiException(_extractError(response), statusCode: response.statusCode);
+    });
+  }
+
+  Future<void> deleteNoContent(String path) async {
+    await _withAuthRetry(path, () async {
+      final response = await _delete(
         Uri.parse('${AppConfig.baseUrl}$path'),
         headers: _headers(),
       );
@@ -190,6 +204,33 @@ class ApiClient {
         contentType: contentType,
         timeout: _timeout,
       );
+    });
+  }
+
+  Future<Map<String, dynamic>> uploadMultipartWithFields(
+    String path,
+    String fieldName,
+    Uint8List bytes,
+    String filename,
+    Map<String, String> fields, {
+    String contentType = 'image/jpeg',
+  }) async {
+    return _withAuthRetry(path, () async {
+      final url = '${AppConfig.baseUrl}$path';
+      final request = http.MultipartRequest('POST', Uri.parse(url));
+      request.headers.addAll(_headers());
+      request.fields.addAll(fields);
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          fieldName,
+          bytes,
+          filename: filename,
+          contentType: http.MediaType.parse(contentType),
+        ),
+      );
+      final streamed = await _client.send(request).timeout(_timeout);
+      final response = await http.Response.fromStream(streamed).timeout(_timeout);
+      return _decode(response);
     });
   }
 

@@ -121,6 +121,7 @@ export interface SuspectDossierDraft {
   socialAccounts: SuspectSocialAccount[];
   relatives: SuspectRelative[];
   linkDecision: SuspectLinkDecision | null;
+  photoGeoTag?: { latitude: number; longitude: number } | null;
   updatedAt: string;
 }
 

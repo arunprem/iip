@@ -22,14 +22,14 @@ class SuspectDossierDetail {
 
   factory SuspectDossierDetail.fromJson(Map<String, dynamic> json) {
     return SuspectDossierDetail(
-      dossierId: json['dossier_id'] as String,
-      masterSuspectId: json['master_suspect_id'] as String,
-      suspectId: json['suspect_id'] as String,
-      linkStatus: json['link_status'] as String? ?? '',
+      dossierId: (json['dossier_id'] ?? json['dossierId']) as String? ?? '',
+      masterSuspectId: (json['master_suspect_id'] ?? json['masterSuspectId']) as String? ?? '',
+      suspectId: (json['suspect_id'] ?? json['suspectId']) as String? ?? '',
+      linkStatus: (json['link_status'] ?? json['linkStatus']) as String? ?? '',
       status: json['status'] as String? ?? '',
-      officeName: json['office_name'] as String?,
-      submittedAt: json['submitted_at'] as String? ?? '',
-      dossierDraftId: json['dossier_draft_id'] as String?,
+      officeName: (json['office_name'] ?? json['officeName']) as String?,
+      submittedAt: (json['submitted_at'] ?? json['submittedAt']) as String? ?? '',
+      dossierDraftId: (json['dossier_draft_id'] ?? json['dossierDraftId']) as String?,
       identity: SuspectIdentity.fromJson(
         json['identity'] as Map<String, dynamic>? ?? {},
       ),
@@ -42,14 +42,14 @@ class SuspectDossierDetail {
             )
           : null,
       hasDifferentPresentAddress:
-          json['has_different_present_address'] as bool? ?? false,
+          (json['has_different_present_address'] ?? json['hasDifferentPresentAddress']) as bool? ?? false,
       contacts: _listOf(json['contacts'], SuspectContact.fromJson),
       socialAccounts:
-          _listOf(json['social_accounts'], SuspectSocialAccount.fromJson),
+          _listOf(json['social_accounts'] ?? json['socialAccounts'], SuspectSocialAccount.fromJson),
       relatives: _listOf(json['relatives'], SuspectRelative.fromJson),
       photos: _listOf(json['photos'], SuspectPhotoRef.fromJson),
-      canEdit: json['can_edit'] as bool? ?? false,
-      canViewMaster: json['can_view_master'] as bool? ?? false,
+      canEdit: (json['can_edit'] ?? json['canEdit']) as bool? ?? false,
+      canViewMaster: (json['can_view_master'] ?? json['canViewMaster']) as bool? ?? false,
     );
   }
 
@@ -105,19 +105,27 @@ class SuspectIdentity {
   });
 
   factory SuspectIdentity.fromJson(Map<String, dynamic> json) {
+    final yob = json['year_of_birth'] ?? json['yearOfBirth'];
+    int? parsedYob;
+    if (yob is int) {
+      parsedYob = yob;
+    } else if (yob is String) {
+      parsedYob = int.tryParse(yob);
+    }
+
     return SuspectIdentity(
-      criminalName: json['criminal_name'] as String? ?? '',
-      aliasName: json['alias_name'] as String?,
+      criminalName: (json['criminal_name'] ?? json['criminalName']) as String? ?? '',
+      aliasName: (json['alias_name'] ?? json['aliasName']) as String?,
       gender: json['gender'] as String?,
-      fathersName: json['fathers_name'] as String?,
-      dateOfBirth: json['date_of_birth'] as String?,
+      fathersName: (json['fathers_name'] ?? json['fathersName']) as String?,
+      dateOfBirth: (json['date_of_birth'] ?? json['dateOfBirth']) as String?,
       age: json['age'] as int?,
-      yearOfBirth: json['year_of_birth'] as int?,
-      placeOfBirth: json['place_of_birth'] as String?,
+      yearOfBirth: parsedYob,
+      placeOfBirth: (json['place_of_birth'] ?? json['placeOfBirth']) as String?,
       religion: json['religion'] as String?,
       category: json['category'] as String?,
-      officeName: json['office_name'] as String?,
-      submittedAt: json['submitted_at'] as String?,
+      officeName: (json['office_name'] ?? json['officeName']) as String?,
+      submittedAt: (json['submitted_at'] ?? json['submittedAt']) as String?,
     );
   }
 
@@ -154,19 +162,19 @@ class SuspectAddressBlock {
 
   factory SuspectAddressBlock.fromJson(Map<String, dynamic> json) {
     return SuspectAddressBlock(
-      houseNo: json['house_no'] as String?,
-      houseName: json['house_name'] as String?,
-      streetName: json['street_name'] as String?,
+      houseNo: (json['house_no'] ?? json['houseNo']) as String?,
+      houseName: (json['house_name'] ?? json['houseName']) as String?,
+      streetName: (json['street_name'] ?? json['streetName']) as String?,
       locality: json['locality'] as String?,
       tehsil: json['tehsil'] as String?,
-      villageTownCity: json['village_town_city'] as String?,
+      villageTownCity: (json['village_town_city'] ?? json['villageTownCity']) as String?,
       pincode: json['pincode'] as String?,
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
       district: json['district'] as String?,
       state: json['state'] as String?,
       country: json['country'] as String?,
-      policeStation: json['police_station'] as String?,
+      policeStation: (json['police_station'] ?? json['policeStation']) as String?,
     );
   }
 
@@ -205,7 +213,7 @@ class SuspectContact {
 
   factory SuspectContact.fromJson(Map<String, dynamic> json) {
     return SuspectContact(
-      contactType: json['contact_type'] as String? ?? '',
+      contactType: (json['contact_type'] ?? json['contactType']) as String? ?? '',
       value: json['value'] as String? ?? '',
     );
   }
@@ -261,10 +269,10 @@ class SuspectPhotoRef {
 
   factory SuspectPhotoRef.fromJson(Map<String, dynamic> json) {
     return SuspectPhotoRef(
-      photoId: json['photo_id'] as String? ?? '',
-      poseType: json['pose_type'] as String? ?? '',
-      storageKey: json['storage_key'] as String? ?? '',
-      faceDetected: json['face_detected'] as bool? ?? false,
+      photoId: (json['photo_id'] ?? json['photoId']) as String? ?? '',
+      poseType: (json['pose_type'] ?? json['poseType']) as String? ?? '',
+      storageKey: (json['storage_key'] ?? json['storageKey']) as String? ?? '',
+      faceDetected: (json['face_detected'] ?? json['faceDetected']) as bool? ?? false,
     );
   }
 

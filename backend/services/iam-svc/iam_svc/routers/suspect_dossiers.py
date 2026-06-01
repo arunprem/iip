@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, Form, File, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from iip_core.auth import CurrentUser
@@ -139,6 +139,7 @@ class UpdateSuspectDossierRequest(BaseModel):
     contacts: list[SuspectContactInput] = Field(default_factory=list)
     social_accounts: list[SuspectSocialInput] = Field(default_factory=list, alias="socialAccounts")
     relatives: list[SuspectRelativeInput] = Field(default_factory=list)
+    photos: list[SuspectPhotoInput] = Field(default_factory=list)
 
 
 class CreateSuspectDossierRequest(BaseModel):
@@ -414,6 +415,20 @@ def _update_request_to_repo_payload(body: UpdateSuspectDossierRequest) -> dict[s
             }
             for r in body.relatives
             if r.name.strip()
+        ],
+        "photos": [
+            {
+                "photo_id": uuid.UUID(p.id),
+                "pose_type": p.pose_type.upper(),
+                "storage_key": p.storage_key,
+                "face_id": uuid.UUID(p.face_id) if p.face_id else None,
+                "detected_pose": p.detected_pose,
+                "face_detected": p.pose_type.upper()
+                in {"FRONT", "LEFT_PROFILE", "RIGHT_PROFILE"},
+                "face_count": p.face_count,
+            }
+            for p in body.photos
+            if p.storage_key
         ],
     }
 
@@ -792,6 +807,199 @@ async def update_suspect_dossier(
     return detail
 
 
+@router.post("/quick-suspects", status_code=status.HTTP_201_CREATED)
+async def create_quick_suspect_capture(
+    current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    name: str = Form(...),
+    latitude: float | None = Form(None),
+    longitude: float | None = Form(None),
+    id: str | None = Form(None),
+    file: UploadFile = File(...),
+):
+    """
+    Upload a quick suspect capture (photo + metadata) from field mobile app.
+    Saves to MinIO and inserts into PostgreSQL.
+    """
+    from iip_core.object_storage import get_object_storage
+    from iam_svc.models.suspect_dossier import QuickSuspectCapture
+    from datetime import datetime, UTC
+
+    capture_id = uuid.uuid4()
+    if id:
+        try:
+            capture_id = uuid.UUID(id)
+        except ValueError:
+            pass
+
+    # Check if this ID already exists (idempotency check)
+    existing_capture = await db.get(QuickSuspectCapture, capture_id)
+    if existing_capture:
+        logger.info(f"Duplicate quick suspect capture received, returning existing record for {capture_id}")
+        return {
+            "id": str(existing_capture.id),
+            "name": existing_capture.name,
+            "storage_key": existing_capture.storage_key,
+            "latitude": float(existing_capture.latitude) if existing_capture.latitude is not None else None,
+            "longitude": float(existing_capture.longitude) if existing_capture.longitude is not None else None,
+            "captured_at": existing_capture.captured_at.isoformat(),
+            "used": existing_capture.used,
+        }
+
+    storage = get_object_storage()
+    if not storage.enabled:
+        raise IIPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            error_code=ErrorCode.SERVICE_UNAVAILABLE,
+            detail="Photo storage is not available",
+        )
+
+    content_type = (file.content_type or "image/jpeg").split(";")[0].strip().lower()
+    ext = ".jpg"
+    if "png" in content_type:
+        ext = ".png"
+    elif "webp" in content_type:
+        ext = ".webp"
+
+    storage_key = f"quick-suspects/{capture_id}{ext}"
+    data = await file.read()
+    if not data:
+        raise IIPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="File is empty",
+        )
+
+    await storage.put(storage_key, data, content_type)
+
+    db_item = QuickSuspectCapture(
+        id=capture_id,
+        name=name.strip(),
+        storage_key=storage_key,
+        latitude=latitude,
+        longitude=longitude,
+        captured_by=uuid.UUID(current_user.user_id),
+        captured_at=datetime.now(UTC),
+        used=False,
+    )
+    db.add(db_item)
+    await db.commit()
+    await db.refresh(db_item)
+
+    return {
+        "id": str(db_item.id),
+        "name": db_item.name,
+        "storage_key": db_item.storage_key,
+        "latitude": float(db_item.latitude) if db_item.latitude is not None else None,
+        "longitude": float(db_item.longitude) if db_item.longitude is not None else None,
+        "captured_at": db_item.captured_at.isoformat(),
+        "used": db_item.used,
+    }
+
+
+@router.get("/quick-suspects")
+async def list_quick_suspect_captures(
+    current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """List all quick suspect photo captures from field analysts."""
+    from sqlalchemy import select
+    from iam_svc.models.suspect_dossier import QuickSuspectCapture
+
+    _ = current_user
+    result = await db.execute(
+        select(QuickSuspectCapture).order_by(QuickSuspectCapture.captured_at.desc())
+    )
+    rows = result.scalars().all()
+
+    return [
+        {
+            "id": str(row.id),
+            "name": row.name,
+            "storage_key": row.storage_key,
+            "latitude": float(row.latitude) if row.latitude is not None else None,
+            "longitude": float(row.longitude) if row.longitude is not None else None,
+            "captured_at": row.captured_at.isoformat(),
+            "used": row.used,
+        }
+        for row in rows
+    ]
+
+
+@router.get("/quick-suspects/{capture_id}/image")
+async def get_quick_suspect_photo_image(
+    current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
+    capture_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    """Serve a quick suspect capture photo binary from MinIO object storage."""
+    from fastapi.responses import Response
+    from iip_core.object_storage import get_object_storage
+    from iam_svc.models.suspect_dossier import QuickSuspectCapture
+
+    _ = current_user
+    row = await db.get(QuickSuspectCapture, capture_id)
+    if not row:
+        raise IIPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code=ErrorCode.NOT_FOUND,
+            detail="Quick suspect capture not found",
+        )
+
+    storage = get_object_storage()
+    if not storage.enabled:
+        raise IIPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            error_code=ErrorCode.SERVICE_UNAVAILABLE,
+            detail="Photo storage is not available",
+        )
+
+    result = await storage.get(row.storage_key)
+    if not result:
+        raise IIPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code=ErrorCode.NOT_FOUND,
+            detail="Photo blob not found in storage",
+        )
+
+    data, content_type = result
+    return Response(content=data, media_type=content_type)
+
+
+@router.delete("/quick-suspects/{capture_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_quick_suspect_capture(
+    capture_id: uuid.UUID,
+    current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Delete a quick suspect capture and its object storage photo."""
+    from fastapi import Response
+    from iip_core.object_storage import get_object_storage
+    from iam_svc.models.suspect_dossier import QuickSuspectCapture
+
+    _ = current_user
+    row = await db.get(QuickSuspectCapture, capture_id)
+    if not row:
+        raise IIPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code=ErrorCode.NOT_FOUND,
+            detail="Quick suspect capture not found",
+        )
+
+    # Delete from MinIO
+    storage = get_object_storage()
+    if storage.enabled and row.storage_key:
+        try:
+            await storage.delete(row.storage_key)
+        except Exception:
+            pass  # best effort
+
+    # Delete from DB
+    await db.delete(row)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/{dossier_id}")
 async def get_suspect_dossier_detail(
     dossier_id: uuid.UUID,
@@ -824,3 +1032,4 @@ async def get_suspect_dossier_detail(
     perm = PermissionService(db)
     detail["can_edit"] = await perm.role_has_action(role, "data:suspect-dossier", "UPDATE")
     return detail
+

@@ -118,15 +118,26 @@ class _DossierBody extends StatelessWidget {
         : identity.criminalName;
 
     return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
+      physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
       slivers: [
-        SliverToBoxAdapter(
-          child: _HeroPoster(
-            name: name,
-            heroBytes: heroBytes,
-            colors: colors,
-            frontStorageKey: detail.frontPhoto?.storageKey,
-            repo: repo,
+        SliverAppBar(
+          expandedHeight: 340 + MediaQuery.paddingOf(context).top,
+          stretch: true,
+          pinned: false,
+          elevation: 0,
+          backgroundColor: Colors.black,
+          leading: const SizedBox.shrink(),
+          flexibleSpace: FlexibleSpaceBar(
+            stretchModes: const [
+              StretchMode.zoomBackground,
+            ],
+            background: _HeroPoster(
+              name: name,
+              heroBytes: heroBytes,
+              colors: colors,
+              frontStorageKey: detail.frontPhoto?.storageKey,
+              repo: repo,
+            ),
           ),
         ),
         SliverToBoxAdapter(
@@ -300,13 +311,11 @@ class _HeroPoster extends StatelessWidget {
         (frontStorageKey != null && frontStorageKey!.isNotEmpty);
 
     return Stack(
+      fit: StackFit.expand,
       children: [
         GestureDetector(
           onTap: canZoom ? () => _openZoom(context) : null,
           behavior: HitTestBehavior.opaque,
-          child: SizedBox(
-          height: 340 + top,
-          width: double.infinity,
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -348,7 +357,6 @@ class _HeroPoster extends StatelessWidget {
               ),
             ],
           ),
-        ),
         ),
         Positioned(
           top: top + 8,

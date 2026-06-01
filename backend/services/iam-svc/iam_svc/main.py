@@ -95,6 +95,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db(settings)
     logger.info("Database connection pool initialized")
 
+    # Run quick suspect captures table startup DDL verification
+    from sqlalchemy import text
+    from iip_core.db import _engine
+    if _engine:
+        try:
+            async with _engine.begin() as conn:
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS intelligence.quick_suspect_captures (
+                        id           UUID PRIMARY KEY,
+                        name         VARCHAR(255) NOT NULL,
+                        storage_key  VARCHAR(512) NOT NULL,
+                        latitude     NUMERIC(10, 7),
+                        longitude    NUMERIC(10, 7),
+                        captured_by  UUID REFERENCES iam.users(id) ON DELETE SET NULL,
+                        captured_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        used         BOOLEAN NOT NULL DEFAULT FALSE,
+                        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quick_suspects_captured_by ON intelligence.quick_suspect_captures (captured_by);
+                    CREATE INDEX IF NOT EXISTS idx_quick_suspects_used ON intelligence.quick_suspect_captures (used);
+                """))
+            logger.info("Quick suspect captures database table verified")
+        except Exception as exc:
+            logger.error("quick_suspect_table_init_failed", error=str(exc))
+
     from iip_core.object_storage import get_object_storage
 
     try:

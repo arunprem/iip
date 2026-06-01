@@ -182,3 +182,33 @@ export async function updateSuspectDossier(
   );
   return res.data;
 }
+
+export interface QuickSuspectCapture {
+  id: string;
+  name: string;
+  storage_key: string;
+  latitude: number | null;
+  longitude: number | null;
+  captured_at: string;
+  used: boolean;
+}
+
+export async function fetchQuickSuspects(): Promise<QuickSuspectCapture[]> {
+  const res = await apiClient.get<QuickSuspectCapture[]>(
+    '/intelligence/suspect-dossiers/quick-suspects',
+    { skipSuccessToast: true }
+  );
+  return res.data;
+}
+
+export async function fetchQuickSuspectImageBlob(id: string): Promise<Blob> {
+  const res = await apiClient.get<Blob>(
+    `/intelligence/suspect-dossiers/quick-suspects/${id}/image`,
+    {
+      responseType: 'blob',
+      skipSuccessToast: true,
+      skipToast: true,
+    }
+  );
+  return res.data;
+}

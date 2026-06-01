@@ -68,6 +68,26 @@ export default function SuspectDossierEdit() {
     );
   }, []);
 
+  const handleStepClick = (targetStep: WizardStepId) => {
+    if (!draft) return;
+    const targetIndex = WIZARD_STEPS.findIndex((s) => s.id === targetStep);
+    const photoIndex = WIZARD_STEPS.findIndex((s) => s.id === 'photo');
+    if (targetIndex > photoIndex) {
+      const block = photosStepBlockedReason(draft);
+      if (block) {
+        showToast('warning', block);
+        return;
+      }
+    }
+    const identityIndex = WIZARD_STEPS.findIndex((s) => s.id === 'identity');
+    if (targetIndex > identityIndex && !draft.criminalName.trim()) {
+      showToast('warning', 'Criminal name is required.');
+      return;
+    }
+    setStep(targetStep);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const goNext = () => {
     if (!draft) return;
     if (step === 'photo') {
@@ -143,6 +163,7 @@ export default function SuspectDossierEdit() {
               );
             }}
             onLinkDecision={(linkDecision) => patchDraft({ linkDecision })}
+            onGeoTagChange={(photoGeoTag) => patchDraft({ photoGeoTag })}
           />
         );
       case 'identity':
@@ -158,6 +179,7 @@ export default function SuspectDossierEdit() {
             onHasDifferentPresentChange={(hasDifferentPresentAddress) =>
               patchDraft({ hasDifferentPresentAddress })
             }
+            photoGeoTag={draft.photoGeoTag}
           />
         );
       case 'contacts':
@@ -176,7 +198,7 @@ export default function SuspectDossierEdit() {
         return (
           <SuspectReviewStep
             draft={draft}
-            onEditStep={setStep}
+            onEditStep={handleStepClick}
             onLinkDecision={(linkDecision) => patchDraft({ linkDecision })}
           />
         );
@@ -200,7 +222,7 @@ export default function SuspectDossierEdit() {
         </Link>
       }
     >
-      <SuspectWizardStepper currentStep={step} completed={completed} onStepClick={setStep} />
+      <SuspectWizardStepper currentStep={step} completed={completed} onStepClick={handleStepClick} />
       <div className="dossier-wizard-shell mt-4">
         <AdminSectionCard
           title={meta.label}

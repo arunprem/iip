@@ -160,5 +160,15 @@ export function draftToUpdatePayload(draft: SuspectDossierDraft) {
     contacts: draft.contacts,
     socialAccounts: draft.socialAccounts,
     relatives: draft.relatives,
+    photos: draft.photos
+      .filter((p) => p.status === 'validated' || p.status === 'duplicate')
+      .map((p) => ({
+        id: p.id,
+        pose_type: p.poseType,
+        storage_key: p.storageKey,
+        face_id: p.faceId,
+        detected_pose: p.detectedPose,
+        face_count: p.faceCount,
+      })),
   };
 }

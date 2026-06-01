@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, FolderHeart, MapPin, Calendar, X, RefreshCw, Search } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import {
   analyzeSuspectPhoto,
   deleteSuspectDraftPhoto,
@@ -23,6 +24,13 @@ import {
   SuspectPhotoCropModal,
   type SuspectCropVariant,
 } from '../SuspectPhotoCropModal';
+import {
+  fetchQuickSuspects,
+  fetchQuickSuspectImageBlob,
+  type QuickSuspectCapture,
+} from '../../../api/suspectDossiers';
+import { showToast } from '../../../stores/toastStore';
+import { AdminButton } from '../../admin/AdminButton';
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const ACCEPT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -35,6 +43,7 @@ interface SuspectPhotoStepProps {
   draft: SuspectDossierDraft;
   onPhotosChange: (update: PhotosUpdater) => void;
   onLinkDecision: (decision: SuspectDossierDraft['linkDecision']) => void;
+  onGeoTagChange?: (geoTag: { latitude: number; longitude: number } | null) => void;
 }
 
 interface CropSession {
@@ -81,7 +90,7 @@ function uploadBusyLabel(
   return elapsedSec > 0 ? `Uploading (${elapsedSec}s)…` : 'Uploading…';
 }
 
-export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision }: SuspectPhotoStepProps) {
+export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoTagChange }: SuspectPhotoStepProps) {
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const loadedPreviewKeys = useRef<Set<string>>(new Set());
   const [uploadElapsedSec, setUploadElapsedSec] = useState(0);
@@ -89,6 +98,36 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision }: Susp
   const [modelsMessage, setModelsMessage] = useState<string | null>(null);
   const [cropSession, setCropSession] = useState<CropSession | null>(null);
   const [uploadingSlotId, setUploadingSlotId] = useState<string | null>(null);
+
+  const [galleryOpen, setGalleryOpen] = useState(false);
+
+  const openGallery = () => {
+    setGalleryOpen(true);
+  };
+
+  const handleImportSelect = async (capture: QuickSuspectCapture) => {
+    if (!frontSlot) return;
+    setGalleryOpen(false);
+    patchSlot(frontSlot.id, { status: 'uploading', errorMessage: null });
+    try {
+      const blob = await fetchQuickSuspectImageBlob(capture.id);
+      const file = new File([blob], `imported_${capture.name.replace(/\s+/g, '_')}.jpg`, {
+        type: blob.type || 'image/jpeg',
+      });
+      
+      if (capture.latitude !== null && capture.longitude !== null && onGeoTagChange) {
+        onGeoTagChange({ latitude: capture.latitude, longitude: capture.longitude });
+      } else if (onGeoTagChange) {
+        onGeoTagChange(null);
+      }
+
+      const src = await readFileAsDataUrl(file);
+      openCrop(frontSlot, src, file);
+    } catch (err) {
+      showToast('error', 'Failed to retrieve quick suspect image from server.');
+      patchSlot(frontSlot.id, { status: 'empty', errorMessage: 'Gallery import failed.' });
+    }
+  };
 
   const uploadingCount = draft.photos.filter((p) => p.status === 'uploading').length;
   const faceServiceReady = modelsReady === true;
@@ -324,7 +363,9 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision }: Susp
   const clearSlot = async (slot: SuspectPhotoSlot) => {
     const cacheKey = slot.storageKey ? `${slot.id}:${slot.storageKey}` : '';
     if (cacheKey) loadedPreviewKeys.current.delete(cacheKey);
-    if (slot.storageKey) {
+    // Only immediately delete from backend if it is a new/draft capture, not an existing saved dossier.
+    // That way, if the user navigates away or cancels, their saved dossier photo is completely safe and unchanged.
+    if (slot.storageKey && !draft.editingDossierId) {
       try {
         await deleteSuspectDraftPhoto({
           dossierDraftId: draft.dossierDraftId,
@@ -428,6 +469,17 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision }: Susp
               Used for face recognition and duplicate checks on submitted dossiers only. Crop is
               recommended; you can skip crop from the crop screen if the photo is already framed.
             </p>
+            <div className="mt-3.5 mb-2">
+              <button
+                type="button"
+                onClick={openGallery}
+                disabled={!faceServiceReady}
+                className="flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold text-white bg-pink-600 hover:bg-pink-700 active:scale-95 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-md shadow-pink-900/10 border border-pink-500/10"
+              >
+                <FolderHeart size={14} className="animate-pulse text-pink-200" />
+                Import from Quick Gallery
+              </button>
+            </div>
             {frontSlot.status === 'validated' && (
               <p className="dossier-photo-hero__badge">
                 <CheckCircle2 size={13} />
@@ -553,6 +605,290 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision }: Susp
           }
         />
       )}
+
+      <QuickGalleryImportModal
+        open={galleryOpen}
+        onClose={() => setGalleryOpen(false)}
+        onSelect={handleImportSelect}
+      />
     </div>
   );
+}
+
+interface QuickGalleryItemCardProps {
+  capture: QuickSuspectCapture;
+  onSelect: (capture: QuickSuspectCapture) => void;
+}
+
+function QuickGalleryItemCard({ capture, onSelect }: QuickGalleryItemCardProps) {
+  const [imgUrl, setImgUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const loadImg = async () => {
+      try {
+        const blob = await fetchQuickSuspectImageBlob(capture.id);
+        if (!active) return;
+        const url = URL.createObjectURL(blob);
+        setImgUrl(url);
+      } catch {
+        if (active) setError(true);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void loadImg();
+    return () => {
+      active = false;
+      if (imgUrl) {
+        URL.revokeObjectURL(imgUrl);
+      }
+    };
+  }, [capture.id]);
+
+  return (
+    <div
+      onClick={() => !loading && !error && onSelect(capture)}
+      className="group relative cursor-pointer overflow-hidden rounded-xl border border-iip-border bg-iip-surface-hover/30 p-2.5 transition-all hover:border-pink-500/50 hover:bg-iip-surface-hover hover:shadow-lg"
+    >
+      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-zinc-950">
+        {loading ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/60">
+            <Loader2 className="h-6 w-6 animate-spin text-iip-primary" />
+          </div>
+        ) : error ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 p-3 text-center text-xs text-iip-text-muted bg-zinc-900/60">
+            <AlertCircle className="h-5 w-5 text-red-400" />
+            <span>Failed to load</span>
+          </div>
+        ) : (
+          <img
+            src={imgUrl!}
+            alt={capture.name}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        )}
+        {capture.latitude !== null && capture.longitude !== null && (
+          <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-medium text-white backdrop-blur-sm">
+            <MapPin size={9} className="text-pink-400" />
+            <span>Geo-tagged</span>
+          </div>
+        )}
+      </div>
+      <div className="mt-2 space-y-0.5">
+        <p className="truncate text-xs font-semibold text-iip-text group-hover:text-pink-400">
+          {capture.name}
+        </p>
+        <p className="flex items-center gap-1 text-[10px] text-iip-text-muted">
+          <Calendar size={10} />
+          <span>{new Date(capture.captured_at).toLocaleDateString()}</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+interface QuickGalleryImportModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (capture: QuickSuspectCapture) => void;
+}
+
+export function QuickGalleryImportModal({ open, onClose, onSelect }: QuickGalleryImportModalProps) {
+  const [items, setItems] = useState<QuickSuspectCapture[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const loadItems = async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    setError(false);
+    try {
+      const data = await fetchQuickSuspects();
+      setItems(data);
+    } catch {
+      if (!silent) setError(true);
+    } finally {
+      if (!silent) setLoading(false);
+      else setRefreshing(false);
+    }
+  };
+
+  // Initial load when modal opens
+  useEffect(() => {
+    if (!open) return;
+    setSearchQuery('');
+    void loadItems(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Auto-poll every 10 seconds while modal is open — new photos pop in automatically
+  useEffect(() => {
+    if (!open) return;
+    const interval = setInterval(() => {
+      void loadItems(true);
+    }, 10_000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  if (!open) return null;
+
+  const content = (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="quick-gallery-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-2xl rounded-2xl border border-iip-border bg-iip-surface shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-iip-border bg-iip-surface-hover/30">
+          <div className="flex items-center gap-2">
+            <FolderHeart className="text-pink-500 h-5 w-5" />
+            <div>
+              <h2 id="quick-gallery-title" className="text-sm font-semibold text-iip-text">
+                Quick Suspect Gallery
+              </h2>
+              <p className="text-[11px] text-iip-text-muted mt-0.5 flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                </span>
+                Live — auto-refreshes every 10s
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => void loadItems(false)}
+              disabled={loading || refreshing}
+              className="p-1.5 rounded-lg text-iip-text-muted hover:bg-iip-surface-hover disabled:opacity-40 transition-colors"
+              aria-label="Refresh gallery"
+              title="Refresh"
+            >
+              <RefreshCw size={15} className={(loading || refreshing) ? 'animate-spin' : ''} />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-iip-text-muted hover:bg-iip-surface-hover"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Search bar */}
+        <div className="px-5 py-2.5 border-b border-iip-border bg-iip-surface-hover/20">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-iip-text-muted" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name or tag…"
+              className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg bg-iip-surface border border-iip-border text-iip-text placeholder-iip-text-muted focus:outline-none focus:border-pink-500/60 focus:ring-1 focus:ring-pink-500/30 transition-colors"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-iip-text-muted hover:text-iip-text"
+                aria-label="Clear search"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3 text-sm text-iip-text-muted">
+              <Loader2 className="h-8 w-8 animate-spin text-pink-500" />
+              <span>Fetching field photo list…</span>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3 text-sm text-center text-iip-text-muted max-w-md mx-auto">
+              <AlertCircle className="h-8 w-8 text-red-500" />
+              <p>Failed to retrieve Quick Suspect items from server. Check that iam-svc and postgres are running.</p>
+              <AdminButton variant="secondary" size="sm" onClick={() => void loadItems(false)}>
+                Retry
+              </AdminButton>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-3 text-sm text-center text-iip-text-muted max-w-md mx-auto">
+              <FolderHeart className="h-10 w-10 text-pink-500/40" />
+              <p className="font-semibold text-iip-text">Gallery is empty</p>
+              <p className="text-xs">
+                No suspect photos have been synchronized from field analyst mobile apps yet. Use the Kerala Police FRS mobile app to capture suspect photos in the field.
+              </p>
+            </div>
+          ) : (() => {
+            const filtered = searchQuery.trim()
+              ? items.filter((i) =>
+                  i.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+                )
+              : items;
+            if (filtered.length === 0) {
+              return (
+                <div className="flex flex-col items-center justify-center py-20 gap-3 text-sm text-center text-iip-text-muted max-w-sm mx-auto">
+                  <Search className="h-9 w-9 text-iip-text-muted/40" />
+                  <p className="font-semibold text-iip-text">No matches found</p>
+                  <p className="text-xs">
+                    No photo matches &ldquo;{searchQuery}&rdquo;. Try a different name or keyword.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="text-xs text-pink-400 hover:text-pink-300 underline underline-offset-2"
+                  >
+                    Clear search
+                  </button>
+                </div>
+              );
+            }
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {filtered.map((item) => (
+                  <QuickGalleryItemCard
+                    key={item.id}
+                    capture={item}
+                    onSelect={onSelect}
+                  />
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+
+        <div className="px-5 py-3 border-t border-iip-border bg-iip-surface-hover/30 flex justify-between items-center text-[11px] text-iip-text-muted">
+          <span className="flex items-center gap-1.5">
+            {refreshing && <RefreshCw size={11} className="animate-spin text-pink-400" />}
+            {searchQuery.trim()
+              ? `${items.filter((i) => i.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).length} of ${items.length} matching`
+              : `${items.length} suspect photograph(s) available`
+            }
+          </span>
+          <AdminButton variant="secondary" size="sm" onClick={onClose}>
+            Cancel
+          </AdminButton>
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(content, document.body);
 }
