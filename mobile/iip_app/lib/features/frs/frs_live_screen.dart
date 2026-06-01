@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/motion/iip_page_route.dart';
@@ -25,11 +26,21 @@ class FrsLiveScreen extends StatefulWidget {
 }
 
 class _FrsLiveScreenState extends State<FrsLiveScreen> {
-  static const _minGapBetweenScans = Duration(milliseconds: 350);
+  // ── Adaptive scan gap ─────────────────────────────────────────────────────
+  // Starts at 300ms; backs off to 1 500ms when the backend is slow,
+  // ramps back when fast. Prevents scan-storms on weak networks.
+  static const Duration _minGap = Duration(milliseconds: 300);
+  static const Duration _maxGap = Duration(milliseconds: 1500);
+  static const Duration _backoffStep = Duration(milliseconds: 200);
+  static const Duration _recoverStep = Duration(milliseconds: 100);
+  Duration _currentGap = _minGap;
 
   CameraController? _camera;
   late final FrsRepository _repo;
   late final SuspectRepository _photoRepo;
+
+  // MLKit detector — fast local pre-filter to skip backend calls for empty frames.
+  late final FaceDetector _localDetector;
 
   bool _initializing = true;
   String? _initError;
@@ -41,7 +52,14 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
   bool _scanLoopActive = false;
   String? _scanStatus;
   final Map<String, Uint8List> _thumbCache = {};
+  // Guard set — prevents two concurrent fetches for the same storage key.
+  final Set<String> _thumbFetchInFlight = {};
   final List<FrsLiveFaceMatch> _pinnedMatches = [];
+
+  // Latest raw camera bytes from the image stream; replaced on every frame.
+  Uint8List? _latestFrameBytes;
+  // Guards against the image-stream callback firing after dispose.
+  bool _streamActive = false;
 
   @override
   void initState() {
@@ -49,32 +67,55 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
     final api = context.read<AuthController>().api;
     _repo = FrsRepository(api);
     _photoRepo = SuspectRepository(api);
+    _localDetector = FaceDetector(
+      options: FaceDetectorOptions(
+        performanceMode: FaceDetectorMode.fast,
+        enableClassification: false,
+        enableLandmarks: false,
+        enableContours: false,
+        enableTracking: false,
+        minFaceSize: 0.10, // ignore very small faces
+      ),
+    );
     _initCamera();
   }
+
+  // ── Camera initialisation ─────────────────────────────────────────────────
 
   Future<void> _initCamera() async {
     try {
       final cameras = await availableCameras();
       final back = cameras.where((c) => c.lensDirection == CameraLensDirection.back);
       final camera = back.isNotEmpty ? back.first : cameras.first;
+
       final controller = CameraController(
         camera,
-        ResolutionPreset.high,
+        // medium = ~720p; sufficient for server face detection and much smaller payload.
+        ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.jpeg,
+        imageFormatGroup:
+            Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.jpeg,
       );
       await controller.initialize();
       if (!mounted) {
         await controller.dispose();
         return;
       }
+
       _camera = controller;
+      _streamActive = true;
+
+      // Start the image stream — frames arrive directly in memory, no disk I/O.
+      await controller.startImageStream(_onCameraFrame);
+
       _scanLoopActive = true;
       setState(() {
         _initializing = false;
         _scanStatus = 'Point camera at faces…';
       });
-      _runScan();
+
+      // Kick off the scan loop with a small initial delay so the preview settles.
+      Future.delayed(const Duration(milliseconds: 400), _runScan);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -83,6 +124,20 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
       });
     }
   }
+
+  /// Image-stream callback — runs on a platform thread, NOT the UI isolate.
+  /// We only keep the latest frame; the scan loop picks it up when ready.
+  void _onCameraFrame(CameraImage frame) {
+    if (!_streamActive) return;
+    // Convert CameraImage → JPEG bytes (Android delivers JPEG natively;
+    // on iOS we receive BGRA which we treat as raw bytes and let MLKit handle).
+    final planes = frame.planes;
+    if (planes.isEmpty) return;
+    // For both JPEG (Android) and BGRA (iOS), plane[0].bytes is usable.
+    _latestFrameBytes = planes[0].bytes;
+  }
+
+  // ── Scan loop ─────────────────────────────────────────────────────────────
 
   Future<void> _runScan() async {
     final controller = _camera;
@@ -94,15 +149,52 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
       return;
     }
 
-    _scanInFlight = true;
-    if (mounted) {
-      setState(() => _scanStatus = 'Matching faces…');
+    final frameBytes = _latestFrameBytes;
+    if (frameBytes == null) {
+      // No frame yet — retry after minimum gap.
+      if (_scanLoopActive && mounted) {
+        Future.delayed(_minGap, _runScan);
+      }
+      return;
     }
 
+    _scanInFlight = true;
+    if (mounted) setState(() => _scanStatus = 'Scanning…');
+
+    final sw = Stopwatch()..start();
     try {
+      // ── Step 1: local MLKit pre-filter ─────────────────────────────────
+      // Stop image stream temporarily so takePicture works cleanly on iOS
+      // (not needed on Android, but harmless).
+      final hasFacesLocally = await _quickLocalFaceCheck(frameBytes, controller);
+      if (!hasFacesLocally) {
+        if (mounted) {
+          setState(() {
+            _lastScan = null;
+            _lastImageWidth = 0;
+            _lastImageHeight = 0;
+            _scanStatus = _pinnedMatches.isEmpty
+                ? 'Point camera at faces…'
+                : 'No faces in view · ${_pinnedMatches.length} saved match(es)';
+          });
+        }
+        return; // skip backend — no faces visible
+      }
+
+      // ── Step 2: take picture (clean JPEG capture) ──────────────────────
+      // Pause the stream, take the picture, then resume.
+      await controller.stopImageStream();
+      _streamActive = false;
+
       final file = await controller.takePicture();
-      final bytes = compressLiveFrame(await file.readAsBytes());
-      final result = await _repo.identifyLiveFrame(bytes);
+      final rawBytes = await file.readAsBytes();
+
+      // ── Step 3: compress in isolate (non-blocking) ─────────────────────
+      final compressed = await compressLiveFrameAsync(rawBytes);
+
+      // ── Step 4: send to backend ────────────────────────────────────────
+      final result = await _repo.identifyLiveFrame(compressed);
+
       if (!mounted) return;
 
       final hasFaces = result.faces.isNotEmpty;
@@ -110,21 +202,31 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
         _lastScan = hasFaces ? result : null;
         _lastImageWidth = hasFaces ? result.imageWidth : 0;
         _lastImageHeight = hasFaces ? result.imageHeight : 0;
-        if (hasFaces) {
-          _mergePinnedMatches(result.highConfidenceMatches);
-        }
+        if (hasFaces) _mergePinnedMatches(result.highConfidenceMatches);
         _scanStatus = _buildScanStatus(result, hasFaces);
       });
 
       if (hasFaces) {
         unawaited(_repo.enrichLiveMatches(result).then((_) {
           if (!mounted) return;
-          setState(() {
-            _mergePinnedMatches(result.highConfidenceMatches);
-          });
+          setState(() => _mergePinnedMatches(result.highConfidenceMatches));
         }));
         unawaited(_loadThumbsForMatches(result.highConfidenceMatches));
         unawaited(_loadThumbsForMatches(_pinnedMatches));
+      }
+
+      // ── Adaptive gap: reward fast backend, penalise slow ───────────────
+      final elapsed = sw.elapsed;
+      if (elapsed.inMilliseconds < 800) {
+        // Backend was fast — gradually recover towards minimum gap.
+        _currentGap = _currentGap > _minGap
+            ? Duration(milliseconds: (_currentGap - _recoverStep).inMilliseconds.clamp(
+                _minGap.inMilliseconds, _maxGap.inMilliseconds))
+            : _minGap;
+      } else {
+        // Backend was slow — back off.
+        _currentGap = Duration(milliseconds: (_currentGap + _backoffStep).inMilliseconds.clamp(
+            _minGap.inMilliseconds, _maxGap.inMilliseconds));
       }
     } catch (_) {
       if (!mounted) return;
@@ -134,13 +236,55 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
         _lastImageHeight = 0;
         _scanStatus = 'Scan failed — will retry';
       });
+      // Back off on error.
+      _currentGap = Duration(milliseconds: (_currentGap + _backoffStep).inMilliseconds.clamp(
+          _minGap.inMilliseconds, _maxGap.inMilliseconds));
     } finally {
       _scanInFlight = false;
+      sw.stop();
+
+      // Resume the image stream for the next cycle.
+      if (_scanLoopActive && mounted && _camera != null) {
+        try {
+          await _camera!.startImageStream(_onCameraFrame);
+          _streamActive = true;
+        } catch (_) {}
+      }
+
       if (_scanLoopActive && mounted) {
-        Future.delayed(_minGapBetweenScans, _runScan);
+        Future.delayed(_currentGap, _runScan);
       }
     }
   }
+
+  /// Fast MLKit face presence check — typically 5–15ms, runs before sending
+  /// any bytes to the network. Returns true if ≥1 face is detected.
+  Future<bool> _quickLocalFaceCheck(
+      Uint8List bytes, CameraController controller) async {
+    try {
+      final size = controller.value.previewSize;
+      if (size == null) return true; // unknown — optimistically proceed
+
+      final inputImage = InputImage.fromBytes(
+        bytes: bytes,
+        metadata: InputImageMetadata(
+          size: Size(size.width, size.height),
+          rotation: InputImageRotation.rotation0deg,
+          format: Platform.isIOS
+              ? InputImageFormat.bgra8888
+              : InputImageFormat.nv21,
+          bytesPerRow: controller.value.previewSize?.width.toInt() ?? 0,
+        ),
+      );
+      final faces = await _localDetector.processImage(inputImage);
+      return faces.isNotEmpty;
+    } catch (_) {
+      // On any error fall through to backend — don't silently drop frames.
+      return true;
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   String _matchKey(FrsLiveFaceMatch face) {
     final match = face.match;
@@ -202,10 +346,17 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
     for (final face in matches) {
       final match = face.match;
       final key = match?.storageKey;
-      if (key == null || key.isEmpty || _thumbCache.containsKey(key)) continue;
-      final bytes = await _photoRepo.fetchPhotoBytes(key);
-      if (bytes != null && mounted) {
-        setState(() => _thumbCache[key] = bytes);
+      if (key == null || key.isEmpty) continue;
+      // Skip if already cached OR already fetching (deduplication guard).
+      if (_thumbCache.containsKey(key) || _thumbFetchInFlight.contains(key)) continue;
+      _thumbFetchInFlight.add(key);
+      try {
+        final bytes = await _photoRepo.fetchPhotoBytes(key);
+        if (bytes != null && mounted) {
+          setState(() => _thumbCache[key] = bytes);
+        }
+      } finally {
+        _thumbFetchInFlight.remove(key);
       }
     }
   }
@@ -226,9 +377,13 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
   @override
   void dispose() {
     _scanLoopActive = false;
+    _streamActive = false;
+    _localDetector.close();
     _camera?.dispose();
     super.dispose();
   }
+
+  // ── UI ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -287,15 +442,14 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
                                     imageHeight: _lastImageHeight,
                                   ),
                                 ),
+                              // Scanning indicator — small, non-intrusive
                               if (_scanInFlight)
                                 Positioned(
                                   top: 72,
                                   right: 12,
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 6,
-                                    ),
+                                        horizontal: 10, vertical: 6),
                                     decoration: BoxDecoration(
                                       color: Colors.black54,
                                       borderRadius: BorderRadius.circular(8),
@@ -314,9 +468,29 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
                                         SizedBox(width: 8),
                                         Text(
                                           'Scanning…',
-                                          style: TextStyle(color: Colors.white, fontSize: 11),
+                                          style: TextStyle(
+                                              color: Colors.white, fontSize: 11),
                                         ),
                                       ],
+                                    ),
+                                  ),
+                                ),
+                              // Adaptive gap indicator (dev helper — shows current latency mode)
+                              if (_scanInFlight && _currentGap > _minGap)
+                                Positioned(
+                                  top: 72,
+                                  left: 12,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.withValues(alpha: 0.7),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      'Slow network (${_currentGap.inMilliseconds}ms gap)',
+                                      style: const TextStyle(
+                                          color: Colors.white, fontSize: 10),
                                     ),
                                   ),
                                 ),
@@ -344,6 +518,8 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
     );
   }
 }
+
+// ── Supporting widgets (unchanged logic, preserved exactly) ──────────────────
 
 class _CameraPreviewLayer extends StatelessWidget {
   const _CameraPreviewLayer({required this.controller});
@@ -391,7 +567,7 @@ class _LegendBar extends StatelessWidget {
               children: [
                 _LegendDot(color: Colors.redAccent, label: '≥80% match'),
                 SizedBox(width: 12),
-                _LegendDot(color: Colors.orangeAccent, label: '75-79% match'),
+                _LegendDot(color: Colors.orangeAccent, label: '75–79% match'),
                 SizedBox(width: 12),
                 _LegendDot(color: Colors.greenAccent, label: 'Face, no match'),
               ],
@@ -417,7 +593,8 @@ class _LegendDot extends StatelessWidget {
         Container(
           width: 10,
           height: 10,
-          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+          decoration:
+              BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
         ),
         const SizedBox(width: 6),
         Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
@@ -481,7 +658,8 @@ class _FaceBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isHighMatch = face.match != null && face.matchPercent >= 80;
-    final isMediumMatch = face.match != null && face.matchPercent >= 75 && face.matchPercent < 80;
+    final isMediumMatch =
+        face.match != null && face.matchPercent >= 75 && face.matchPercent < 80;
     final hasMatch = isHighMatch || isMediumMatch;
 
     final color = isHighMatch
@@ -490,14 +668,12 @@ class _FaceBox extends StatelessWidget {
             ? Colors.orangeAccent
             : Colors.greenAccent;
 
-    final borderWidth = hasMatch ? 4.0 : 3.0;
-
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Container(
           decoration: BoxDecoration(
-            border: Border.all(color: color, width: borderWidth),
+            border: Border.all(color: color, width: hasMatch ? 4.0 : 3.0),
           ),
         ),
         if (hasMatch)
@@ -554,7 +730,8 @@ class _MatchTray extends StatelessWidget {
             matches.isEmpty
                 ? 'Identified matches (≥$kFrsLiveMatchPercent%)'
                 : 'Identified matches — tap to open, × to remove',
-            style: TextStyle(color: colors.text, fontWeight: FontWeight.w600, fontSize: 13),
+            style: TextStyle(
+                color: colors.text, fontWeight: FontWeight.w600, fontSize: 13),
           ),
           const SizedBox(height: 8),
           SizedBox(
@@ -598,18 +775,23 @@ class _MatchTray extends StatelessWidget {
                                           width: 52,
                                           height: 52,
                                           child: bytes != null
-                                              ? Image.memory(bytes, fit: BoxFit.cover)
+                                              ? Image.memory(bytes,
+                                                  fit: BoxFit.cover)
                                               : ColoredBox(
-                                                  color: colors.primary.withValues(alpha: 0.1),
-                                                  child: Icon(Icons.person, color: colors.primary),
+                                                  color: colors.primary
+                                                      .withValues(alpha: 0.1),
+                                                  child: Icon(Icons.person,
+                                                      color: colors.primary),
                                                 ),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
                                           children: [
                                             Text(
                                               match.criminalName ?? 'Unknown',

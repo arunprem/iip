@@ -9,7 +9,7 @@ class FrsRepository {
 
   final ApiClient _api;
 
-  static const Duration liveScanTimeout = Duration(seconds: 90);
+  static const Duration liveScanTimeout = Duration(seconds: 15);
 
   Future<FrsLiveScanResult> identifyLiveFrame(Uint8List imageBytes) async {
     final json = await _api.uploadMultipartMl(
