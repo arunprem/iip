@@ -258,6 +258,7 @@ export function SuspectReviewStep({ draft, onEditStep, onLinkDecision }: Suspect
           draft={draft}
           linkDecision={draft.linkDecision}
           onLinkDecision={onLinkDecision}
+          reviewMode
         />
 
         <ReportSection number="I" title="Photographs & biometric capture" step="photo" onEdit={onEditStep}>

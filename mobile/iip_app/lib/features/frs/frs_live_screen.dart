@@ -565,9 +565,9 @@ class _LegendBar extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _LegendDot(color: Colors.redAccent, label: '≥80% match'),
+                _LegendDot(color: Colors.redAccent, label: '≥72% match'),
                 SizedBox(width: 12),
-                _LegendDot(color: Colors.orangeAccent, label: '75–79% match'),
+                _LegendDot(color: Colors.orangeAccent, label: '68–71% match'),
                 SizedBox(width: 12),
                 _LegendDot(color: Colors.greenAccent, label: 'Face, no match'),
               ],
@@ -657,9 +657,9 @@ class _FaceBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isHighMatch = face.match != null && face.matchPercent >= 80;
+    final isHighMatch = face.match != null && face.matchPercent >= 72;
     final isMediumMatch =
-        face.match != null && face.matchPercent >= 75 && face.matchPercent < 80;
+        face.match != null && face.matchPercent >= 68 && face.matchPercent < 72;
     final hasMatch = isHighMatch || isMediumMatch;
 
     final color = isHighMatch

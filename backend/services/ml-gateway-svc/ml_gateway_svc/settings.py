@@ -27,9 +27,25 @@ class MlGatewaySettings(BaseServiceSettings):
     face_detector_backend: str = Field(default="retinaface")
     face_match_min_score: float = Field(
         default=0.72,
-        description="Minimum Elasticsearch kNN score to treat as a duplicate (cosine)",
+        description="Legacy Elasticsearch kNN pre-filter (exact cosine applied after retrieval)",
     )
-    face_duplicate_search_k: int = Field(default=5)
+    face_identify_min_cosine: float = Field(
+        default=0.72,
+        description="Minimum exact cosine for field / workbench 1:N identification",
+    )
+    face_duplicate_min_cosine: float = Field(
+        default=0.68,
+        description="Minimum exact cosine to flag a duplicate during dossier photo upload",
+    )
+    face_match_min_gap: float = Field(
+        default=0.045,
+        description="Top match must beat the runner-up by at least this cosine margin",
+    )
+    face_match_high_confidence_cosine: float = Field(
+        default=0.78,
+        description="Skip margin check when the top cosine is at or above this value",
+    )
+    face_duplicate_search_k: int = Field(default=8)
     face_max_upload_bytes: int = Field(default=8 * 1024 * 1024)
     face_analysis_timeout_seconds: int = Field(
         default=300,
@@ -40,11 +56,15 @@ class MlGatewaySettings(BaseServiceSettings):
         description="Load DeepFace/RetinaFace weights when ml-gateway starts (one-time per process)",
     )
     face_live_max_side: int = Field(
-        default=640,
+        default=1024,
         description="Longest image side for live FRS detection (smaller = faster)",
     )
     face_live_max_faces: int = Field(default=4, description="Max faces per live scan frame")
-    face_live_search_k: int = Field(default=1, description="kNN hits per face for live FRS")
+    face_live_search_k: int = Field(default=3, description="kNN hits per face for live FRS")
+    face_live_identify_min_cosine: float = Field(
+        default=0.70,
+        description="Minimum exact cosine for live multi-face camera matching",
+    )
     suspect_photos_prefix: str = Field(default="suspect-photos")
 
 

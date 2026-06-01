@@ -100,32 +100,43 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoT
   const [uploadingSlotId, setUploadingSlotId] = useState<string | null>(null);
 
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryTargetSlotId, setGalleryTargetSlotId] = useState<string | null>(null);
 
-  const openGallery = () => {
+  const openGallery = (slot: SuspectPhotoSlot) => {
+    setGalleryTargetSlotId(slot.id);
     setGalleryOpen(true);
   };
 
-  const handleImportSelect = async (capture: QuickSuspectCapture) => {
-    if (!frontSlot) return;
+  const closeGallery = () => {
     setGalleryOpen(false);
-    patchSlot(frontSlot.id, { status: 'uploading', errorMessage: null });
+    setGalleryTargetSlotId(null);
+  };
+
+  const handleImportSelect = async (capture: QuickSuspectCapture) => {
+    const targetSlot = galleryTargetSlotId ? getSlot(galleryTargetSlotId) : frontSlot;
+    if (!targetSlot) return;
+    closeGallery();
+    patchSlot(targetSlot.id, { status: 'uploading', errorMessage: null });
     try {
       const blob = await fetchQuickSuspectImageBlob(capture.id);
-      const file = new File([blob], `imported_${capture.name.replace(/\s+/g, '_')}.jpg`, {
+      const safeName = capture.name.replace(/\s+/g, '_');
+      const file = new File([blob], `imported_${targetSlot.poseType.toLowerCase()}_${safeName}.jpg`, {
         type: blob.type || 'image/jpeg',
       });
       
-      if (capture.latitude !== null && capture.longitude !== null && onGeoTagChange) {
-        onGeoTagChange({ latitude: capture.latitude, longitude: capture.longitude });
-      } else if (onGeoTagChange) {
-        onGeoTagChange(null);
+      if (targetSlot.poseType === 'FRONT' && onGeoTagChange) {
+        if (capture.latitude !== null && capture.longitude !== null) {
+          onGeoTagChange({ latitude: capture.latitude, longitude: capture.longitude });
+        } else {
+          onGeoTagChange(null);
+        }
       }
 
       const src = await readFileAsDataUrl(file);
-      openCrop(frontSlot, src, file);
+      openCrop(targetSlot, src, file);
     } catch (err) {
       showToast('error', 'Failed to retrieve quick suspect image from server.');
-      patchSlot(frontSlot.id, { status: 'empty', errorMessage: 'Gallery import failed.' });
+      patchSlot(targetSlot.id, { status: 'empty', errorMessage: 'Gallery import failed.' });
     }
   };
 
@@ -403,6 +414,7 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoT
   ).length;
   const hasFront = frontSlot?.status === 'validated' || frontSlot?.status === 'duplicate';
   const cropSlot = cropSession ? getSlot(cropSession.slotId) : null;
+  const galleryTargetSlot = galleryTargetSlotId ? getSlot(galleryTargetSlotId) : null;
 
   return (
     <div className="dossier-photo-step">
@@ -456,6 +468,7 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoT
               inputRefs.current[frontSlot.id] = el;
             }}
             onPickFile={() => inputRefs.current[frontSlot.id]?.click()}
+            onPickFromGallery={() => openGallery(frontSlot)}
             onRecrop={() => handleRecrop(frontSlot)}
             onClear={() => void clearSlot(frontSlot)}
             onPreviewError={() => handlePreviewError(frontSlot)}
@@ -469,17 +482,6 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoT
               Used for face recognition and duplicate checks on submitted dossiers only. Crop is
               recommended; you can skip crop from the crop screen if the photo is already framed.
             </p>
-            <div className="mt-3.5 mb-2">
-              <button
-                type="button"
-                onClick={openGallery}
-                disabled={!faceServiceReady}
-                className="flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold text-white bg-pink-600 hover:bg-pink-700 active:scale-95 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-md shadow-pink-900/10 border border-pink-500/10"
-              >
-                <FolderHeart size={14} className="animate-pulse text-pink-200" />
-                Import from Quick Gallery
-              </button>
-            </div>
             {frontSlot.status === 'validated' && (
               <p className="dossier-photo-hero__badge">
                 <CheckCircle2 size={13} />
@@ -562,6 +564,7 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoT
                   inputRefs.current[slot.id] = el;
                 }}
                 onPickFile={() => inputRefs.current[slot.id]?.click()}
+                onPickFromGallery={() => openGallery(slot)}
                 onRecrop={() => handleRecrop(slot)}
                 onClear={() => void clearSlot(slot)}
                 onPreviewError={() => handlePreviewError(slot)}
@@ -608,7 +611,8 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoT
 
       <QuickGalleryImportModal
         open={galleryOpen}
-        onClose={() => setGalleryOpen(false)}
+        targetLabel={galleryTargetSlot?.label}
+        onClose={closeGallery}
         onSelect={handleImportSelect}
       />
     </div>
@@ -692,11 +696,17 @@ function QuickGalleryItemCard({ capture, onSelect }: QuickGalleryItemCardProps) 
 
 interface QuickGalleryImportModalProps {
   open: boolean;
+  targetLabel?: string;
   onClose: () => void;
   onSelect: (capture: QuickSuspectCapture) => void;
 }
 
-export function QuickGalleryImportModal({ open, onClose, onSelect }: QuickGalleryImportModalProps) {
+export function QuickGalleryImportModal({
+  open,
+  targetLabel,
+  onClose,
+  onSelect,
+}: QuickGalleryImportModalProps) {
   const [items, setItems] = useState<QuickSuspectCapture[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -764,7 +774,9 @@ export function QuickGalleryImportModal({ open, onClose, onSelect }: QuickGaller
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
                 </span>
-                Live — auto-refreshes every 10s
+                {targetLabel
+                  ? `Importing to ${targetLabel} · live refresh every 10s`
+                  : 'Live — auto-refreshes every 10s'}
               </p>
             </div>
           </div>
@@ -818,7 +830,7 @@ export function QuickGalleryImportModal({ open, onClose, onSelect }: QuickGaller
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3 text-sm text-iip-text-muted">
               <Loader2 className="h-8 w-8 animate-spin text-pink-500" />
-              <span>Fetching field photo list…</span>
+              <span>Fetching your quick gallery…</span>
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3 text-sm text-center text-iip-text-muted max-w-md mx-auto">
@@ -833,7 +845,7 @@ export function QuickGalleryImportModal({ open, onClose, onSelect }: QuickGaller
               <FolderHeart className="h-10 w-10 text-pink-500/40" />
               <p className="font-semibold text-iip-text">Gallery is empty</p>
               <p className="text-xs">
-                No suspect photos have been synchronized from field analyst mobile apps yet. Use the Kerala Police FRS mobile app to capture suspect photos in the field.
+                You have no quick gallery photos yet. Capture suspect photos in the Kerala Police FRS mobile app while signed in as you — only your captures appear here.
               </p>
             </div>
           ) : (() => {

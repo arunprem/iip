@@ -12,6 +12,8 @@ from typing import Any
 from elasticsearch import ApiError, AsyncElasticsearch, NotFoundError
 
 from iip_core.logging import get_logger
+from ml_gateway_svc.services.face_pipeline import normalize_embedding
+from ml_gateway_svc.services.face_similarity import apply_match_margin, exact_match_score
 from ml_gateway_svc.settings import MlGatewaySettings, get_ml_settings
 
 logger = get_logger(__name__)
@@ -122,7 +124,7 @@ class FaceIndexService:
             "storage_key": storage_key,
             "created_by": created_by,
             "created_at": datetime.now(UTC).isoformat(),
-            "face_embedding": embedding,
+            "face_embedding": normalize_embedding(embedding),
         }
         await es.index(index=self._settings.face_index_name, id=face_id, document=doc)
 
@@ -153,6 +155,8 @@ class FaceIndexService:
         exclude_face_id: str | None = None,
         search_k: int | None = None,
         min_score: float | None = None,
+        min_cosine: float | None = None,
+        apply_margin: bool = True,
     ) -> list[FaceDuplicateMatch]:
         if not self.enabled:
             return []
@@ -165,14 +169,27 @@ class FaceIndexService:
         except ApiError:
             return []
 
+        query_vector = normalize_embedding(embedding)
+        cosine_floor = (
+            min_cosine
+            if min_cosine is not None
+            else (
+                min_score
+                if min_score is not None and min_score <= 1.0
+                else self._settings.face_identify_min_cosine
+            )
+        )
+
         try:
             return await self._search_similar(
                 es,
-                embedding,
+                query_vector,
                 exclude_dossier_draft_id,
                 exclude_face_id,
                 search_k=search_k,
                 min_score=min_score,
+                min_cosine=cosine_floor,
+                apply_margin=apply_margin,
             )
         except ApiError as exc:
             logger.warning("face_similar_search_failed", error=str(exc))
@@ -187,6 +204,8 @@ class FaceIndexService:
         *,
         search_k: int | None = None,
         min_score: float | None = None,
+        min_cosine: float | None = None,
+        apply_margin: bool = True,
     ) -> list[FaceDuplicateMatch]:
         # Only compare against submitted dossiers (suspect_id set). Draft uploads are not in the FRS index.
         filters: list[dict[str, Any]] = [
@@ -204,7 +223,7 @@ class FaceIndexService:
             "field": "face_embedding",
             "query_vector": embedding,
             "k": k,
-            "num_candidates": max(20, k * 8),
+            "num_candidates": max(40, k * 12),
         }
         if filters or must_not:
             knn["filter"] = {"bool": {"filter": filters, "must_not": must_not}}
@@ -221,16 +240,41 @@ class FaceIndexService:
                 "criminal_name",
                 "storage_key",
                 "pose_type",
+                "face_embedding",
             ],
         )
 
-        matches: list[FaceDuplicateMatch] = []
-        score_floor = min_score if min_score is not None else self._settings.face_match_min_score
+        cosine_floor = min_cosine if min_cosine is not None else self._settings.face_identify_min_cosine
+        es_score_floor = min_score if min_score is not None else self._settings.face_match_min_score
+
+        ranked: list[tuple[float, dict[str, Any], dict[str, Any]]] = []
         for hit in response.get("hits", {}).get("hits", []):
-            score = float(hit.get("_score") or 0.0)
-            if score < score_floor:
+            es_score = float(hit.get("_score") or 0.0)
+            if es_score < es_score_floor:
                 continue
             src = hit.get("_source") or {}
+            doc_embedding = src.get("face_embedding")
+            if isinstance(doc_embedding, list) and doc_embedding:
+                exact = exact_match_score(embedding, doc_embedding)
+            else:
+                exact = es_score
+            if exact < cosine_floor:
+                continue
+            ranked.append((exact, hit, src))
+
+        ranked.sort(key=lambda item: item[0], reverse=True)
+
+        if apply_margin:
+            kept = apply_match_margin(
+                ranked,
+                min_gap=self._settings.face_match_min_gap,
+                high_confidence=self._settings.face_match_high_confidence_cosine,
+            )
+        else:
+            kept = ranked
+
+        matches: list[FaceDuplicateMatch] = []
+        for exact, hit, src in kept:
             matches.append(
                 FaceDuplicateMatch(
                     face_id=str(src.get("face_id") or hit.get("_id")),
@@ -240,7 +284,7 @@ class FaceIndexService:
                     criminal_name=src.get("criminal_name"),
                     storage_key=src.get("storage_key"),
                     pose_type=str(src.get("pose_type") or "FRONT"),
-                    score=score,
+                    score=exact,
                 )
             )
         return matches

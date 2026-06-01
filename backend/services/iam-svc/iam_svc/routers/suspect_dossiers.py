@@ -807,6 +807,20 @@ async def update_suspect_dossier(
     return detail
 
 
+def _quick_capture_owner_id(current_user: CurrentUser) -> uuid.UUID:
+    return uuid.UUID(current_user.user_id)
+
+
+def _assert_quick_capture_owner(row, current_user: CurrentUser) -> None:
+    owner_id = _quick_capture_owner_id(current_user)
+    if row.captured_by != owner_id:
+        raise IIPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            error_code=ErrorCode.FORBIDDEN,
+            detail="You can only access your own quick gallery photos",
+        )
+
+
 @router.post("/quick-suspects", status_code=status.HTTP_201_CREATED)
 async def create_quick_suspect_capture(
     current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
@@ -835,6 +849,7 @@ async def create_quick_suspect_capture(
     # Check if this ID already exists (idempotency check)
     existing_capture = await db.get(QuickSuspectCapture, capture_id)
     if existing_capture:
+        _assert_quick_capture_owner(existing_capture, current_user)
         logger.info(f"Duplicate quick suspect capture received, returning existing record for {capture_id}")
         return {
             "id": str(existing_capture.id),
@@ -902,13 +917,15 @@ async def list_quick_suspect_captures(
     current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """List all quick suspect photo captures from field analysts."""
+    """List quick suspect photo captures for the signed-in analyst only."""
     from sqlalchemy import select
     from iam_svc.models.suspect_dossier import QuickSuspectCapture
 
-    _ = current_user
+    owner_id = _quick_capture_owner_id(current_user)
     result = await db.execute(
-        select(QuickSuspectCapture).order_by(QuickSuspectCapture.captured_at.desc())
+        select(QuickSuspectCapture)
+        .where(QuickSuspectCapture.captured_by == owner_id)
+        .order_by(QuickSuspectCapture.captured_at.desc())
     )
     rows = result.scalars().all()
 
@@ -937,7 +954,6 @@ async def get_quick_suspect_photo_image(
     from iip_core.object_storage import get_object_storage
     from iam_svc.models.suspect_dossier import QuickSuspectCapture
 
-    _ = current_user
     row = await db.get(QuickSuspectCapture, capture_id)
     if not row:
         raise IIPException(
@@ -945,6 +961,7 @@ async def get_quick_suspect_photo_image(
             error_code=ErrorCode.NOT_FOUND,
             detail="Quick suspect capture not found",
         )
+    _assert_quick_capture_owner(row, current_user)
 
     storage = get_object_storage()
     if not storage.enabled:
@@ -977,7 +994,6 @@ async def delete_quick_suspect_capture(
     from iip_core.object_storage import get_object_storage
     from iam_svc.models.suspect_dossier import QuickSuspectCapture
 
-    _ = current_user
     row = await db.get(QuickSuspectCapture, capture_id)
     if not row:
         raise IIPException(
@@ -985,6 +1001,7 @@ async def delete_quick_suspect_capture(
             error_code=ErrorCode.NOT_FOUND,
             detail="Quick suspect capture not found",
         )
+    _assert_quick_capture_owner(row, current_user)
 
     # Delete from MinIO
     storage = get_object_storage()

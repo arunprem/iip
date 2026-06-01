@@ -23,6 +23,7 @@ import { SuspectSocialStep } from '../../components/suspects/steps/SuspectSocial
 import { discardSuspectDraftPhotos, indexSubmittedSuspectFace } from '../../api/suspectFaces';
 import { createSuspectDossier, scoreSuspectMatches } from '../../api/suspectDossiers';
 import { showToast } from '../../stores/toastStore';
+import { confirmClearDossierDraft } from '../../utils/confirmDialog';
 import {
   DOSSIER_DRAFT_STORAGE_KEY,
   WIZARD_STEPS,
@@ -152,9 +153,11 @@ export default function SuspectDossierCreate() {
   };
 
   const clearDraft = async () => {
-    if (!window.confirm('Discard all entered data and start over?')) return;
     const draftIdToDiscard = draft.dossierDraftId;
     const hadStoredPhotos = draft.photos.some((p) => p.storageKey);
+    const confirmed = await confirmClearDossierDraft({ hasStoredPhotos: hadStoredPhotos });
+    if (!confirmed) return;
+
     try {
       if (hadStoredPhotos) {
         await discardSuspectDraftPhotos(draftIdToDiscard);

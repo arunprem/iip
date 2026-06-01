@@ -3,7 +3,7 @@ import { identifySuspectPhoto, type FaceDuplicateMatch } from './suspectFaces';
 import { apiClient } from './http';
 import { extractEmailFromQuestion, extractPhoneFromQuestion } from './workbenchSearchUtils';
 
-export const WORKBENCH_FRS_MATCH_MIN = 0.7;
+export const WORKBENCH_FRS_MATCH_MIN = 0.72;
 
 export interface PhotoSearchMatch {
   similarityPercent: number;
@@ -394,7 +394,7 @@ export function buildPhotoSearchIntroPrompt(
 
   const ask = userNote?.trim() ? ` The analyst also wrote: "${userNote.trim()}".` : '';
   return `Write a short chat intro (1–2 sentences only) for an intelligence analyst.${ask}
-Facial recognition on their uploaded photo found ${result.matches.length} suspect(s) at ≥70% similarity.
+Facial recognition on their uploaded photo found ${result.matches.length} suspect(s) at ≥72% similarity.
 Face detected: ${result.faceDetected ? 'yes' : 'no'}. Do not list suspect details — individual cards follow below.`;
 }
 
@@ -407,7 +407,7 @@ FRS results:
 - Faces in image: ${result.faceCount}
 - Pose: ${result.detectedPose || 'Unknown'}
 ${result.message ? `- Note: ${result.message}` : ''}
-- No suspects met the 70% similarity threshold.
+- No suspects met the 72% similarity threshold.
 
 Explain clearly in a conversational tone why no match was found and suggest next steps (better photo angle, lower threshold review, manual name search, etc.).`;
 }

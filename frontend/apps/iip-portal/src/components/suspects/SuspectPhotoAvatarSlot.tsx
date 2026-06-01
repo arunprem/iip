@@ -3,6 +3,7 @@ import {
   Camera,
   CheckCircle2,
   Crop,
+  FolderHeart,
   Loader2,
   User,
   X,
@@ -28,6 +29,7 @@ interface SuspectPhotoAvatarSlotProps {
   showInlineError?: boolean;
   inputRef?: (el: HTMLInputElement | null) => void;
   onPickFile: () => void;
+  onPickFromGallery?: () => void;
   onClear?: () => void;
   onRecrop?: () => void;
   onPreviewError?: () => void;
@@ -45,6 +47,7 @@ export function SuspectPhotoAvatarSlot({
   verifiedLabel = 'Saved',
   inputRef,
   onPickFile,
+  onPickFromGallery,
   onClear,
   onRecrop,
   onPreviewError,
@@ -52,6 +55,7 @@ export function SuspectPhotoAvatarSlot({
 }: SuspectPhotoAvatarSlotProps) {
   const hasPhoto = Boolean(slot.previewUrl);
   const showActions = hasPhoto && !isBusy && !disabled;
+  const showGalleryAction = !hasPhoto && !isBusy && Boolean(onPickFromGallery);
   const samplePose: PoseSamplePose | null =
     !hasPhoto && poseHasSampleGuide(slot.poseType) ? slot.poseType : null;
 
@@ -161,6 +165,22 @@ export function SuspectPhotoAvatarSlot({
             aria-label={`Remove ${slot.label}`}
           >
             <X size={12} />
+          </button>
+        )}
+
+        {showGalleryAction && (
+          <button
+            type="button"
+            className="dossier-photo-avatar__action dossier-photo-avatar__action--gallery"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPickFromGallery?.();
+            }}
+            disabled={disabled}
+            title="Import from Quick Gallery"
+            aria-label={`Import ${slot.label} from Quick Gallery`}
+          >
+            <FolderHeart size={12} />
           </button>
         )}
 

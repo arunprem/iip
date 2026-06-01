@@ -73,6 +73,7 @@ class _QuickSuspectGalleryScreenState extends State<QuickSuspectGalleryScreen> {
   bool _syncing = false;
   bool _fetching = false;
   bool _searchActive = false;
+  String? _galleryUserId;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -107,16 +108,46 @@ class _QuickSuspectGalleryScreenState extends State<QuickSuspectGalleryScreen> {
     _loadLocalData();
   }
 
+  String? _resolveGalleryUserId() {
+    final auth = context.read<AuthController>();
+    final userId = auth.profile?.userId ?? auth.user?.userId;
+    if (userId == null || userId.isEmpty) return null;
+    return userId;
+  }
+
+  String _galleryPrefsKey(String userId) => 'quick_suspects_gallery_$userId';
+
+  String _pendingDeletionsPrefsKey(String userId) => 'quick_suspect_pending_deletions_$userId';
+
   Future<void> _loadLocalData() async {
     setState(() => _loading = true);
     try {
+      final userId = _resolveGalleryUserId();
+      if (userId == null) {
+        _items.clear();
+        return;
+      }
+      _galleryUserId = userId;
+
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('quick_suspects_gallery');
+      final galleryKey = _galleryPrefsKey(userId);
+      var raw = prefs.getString(galleryKey);
+      if (raw == null) {
+        // One-time migration from pre-user-scoped storage key.
+        final legacy = prefs.getString('quick_suspects_gallery');
+        if (legacy != null) {
+          raw = legacy;
+          await prefs.setString(galleryKey, legacy);
+          await prefs.remove('quick_suspects_gallery');
+        }
+      }
       if (raw != null) {
         final list = jsonDecode(raw) as List;
         _items.clear();
         _items.addAll(list.map((e) => QuickSuspectItem.fromJson(e as Map<String, dynamic>)));
         _items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      } else {
+        _items.clear();
       }
     } catch (e) {
       debugPrint("Error loading quick suspects: $e");
@@ -128,16 +159,19 @@ class _QuickSuspectGalleryScreenState extends State<QuickSuspectGalleryScreen> {
 
   Future<void> _saveLocalData() async {
     try {
+      final userId = _galleryUserId ?? _resolveGalleryUserId();
+      if (userId == null) return;
+      _galleryUserId = userId;
+
       final prefs = await SharedPreferences.getInstance();
       final data = _items.map((e) => e.toJson()).toList();
-      await prefs.setString('quick_suspects_gallery', jsonEncode(data));
+      await prefs.setString(_galleryPrefsKey(userId), jsonEncode(data));
     } catch (e) {
       debugPrint("Error saving quick suspects: $e");
     }
   }
 
-  /// Fetches the server-side list of quick suspect captures and merges
-  /// any new items that other field devices have uploaded.
+  /// Fetches this user's server-side quick gallery and merges captures from other devices.
   Future<void> _fetchFromServer() async {
     if (_fetching || _syncing) return;
     setState(() => _fetching = true);
@@ -155,7 +189,7 @@ class _QuickSuspectGalleryScreenState extends State<QuickSuspectGalleryScreen> {
         final alreadyExists = _items.any((e) => e.serverId == serverId);
         if (alreadyExists) continue;
 
-        // This is a photo from another device — add it to our local list
+        // Cloud-only capture from another device signed in as the same user
         final item = QuickSuspectItem(
           id: serverId,
           name: (map['name'] as String?) ?? 'Unknown',
@@ -179,7 +213,7 @@ class _QuickSuspectGalleryScreenState extends State<QuickSuspectGalleryScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('$added new photo${added > 1 ? 's' : ''} from field officers.'),
+              content: Text('$added photo${added > 1 ? 's' : ''} synced from your account.'),
               backgroundColor: Colors.blueGrey.shade800,
               behavior: SnackBarBehavior.floating,
             ),
@@ -198,11 +232,17 @@ class _QuickSuspectGalleryScreenState extends State<QuickSuspectGalleryScreen> {
 
     setState(() => _syncing = true);
     final api = context.read<AuthController>().api;
+    final userId = _galleryUserId ?? _resolveGalleryUserId();
+    if (userId == null) {
+      if (mounted) setState(() => _syncing = false);
+      return;
+    }
+    _galleryUserId = userId;
 
     // 1. Process any pending server deletions first (highly reliable offline deletions sync)
     try {
       final prefs = await SharedPreferences.getInstance();
-      final pendingDeletes = prefs.getStringList('quick_suspect_pending_deletions') ?? [];
+      final pendingDeletes = prefs.getStringList(_pendingDeletionsPrefsKey(userId)) ?? [];
 
       // Also grab items marked as deleting to process them
       final deletingItems = _items.where((e) => e.deleting && e.serverId != null).toList();
@@ -239,7 +279,7 @@ class _QuickSuspectGalleryScreenState extends State<QuickSuspectGalleryScreen> {
             remainingDeletes.add(serverId);
           }
         }
-        await prefs.setStringList('quick_suspect_pending_deletions', remainingDeletes);
+        await prefs.setStringList(_pendingDeletionsPrefsKey(userId), remainingDeletes);
         await _saveLocalData();
       }
 
@@ -457,8 +497,12 @@ class _QuickSuspectGalleryScreenState extends State<QuickSuspectGalleryScreen> {
 
     final position = await _determinePosition();
 
+    final auth = context.read<AuthController>();
+    final userId = auth.profile?.userId ?? auth.user?.userId ?? 'unknown';
+    _galleryUserId = userId;
+
     final appDir = await getApplicationDocumentsDirectory();
-    final quickDir = Directory('${appDir.path}/quick_suspects');
+    final quickDir = Directory('${appDir.path}/quick_suspects/$userId');
     if (!await quickDir.exists()) {
       await quickDir.create(recursive: true);
     }
@@ -514,7 +558,7 @@ class _QuickSuspectGalleryScreenState extends State<QuickSuspectGalleryScreen> {
             },
             tooltip: _searchActive ? 'Close Search' : 'Search by Tag',
           ),
-          // Refresh: pull new photos from the server that other field officers uploaded
+          // Refresh: pull this user's cloud gallery (e.g. from another signed-in device)
           IconButton(
             icon: AnimatedRotation(
               turns: _fetching ? 1.0 : 0.0,
@@ -776,7 +820,7 @@ class _QuickSuspectGalleryScreenState extends State<QuickSuspectGalleryScreen> {
                   Icon(Icons.cloud_done_rounded, color: colors.primary, size: 40),
                   const SizedBox(height: 8),
                   Text(
-                    'Synced from\nanother device',
+                    'Synced from\ncloud',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: colors.textMuted, fontSize: 10),
                   ),

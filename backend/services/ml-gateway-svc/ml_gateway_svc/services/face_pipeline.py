@@ -7,12 +7,10 @@ ml-gateway process. Call warmup_face_models() on service startup.
 
 from __future__ import annotations
 
-import tempfile
 import threading
 import time
 from dataclasses import dataclass
 from io import BytesIO
-from pathlib import Path
 from typing import Any
 
 import cv2
@@ -509,18 +507,11 @@ def analyze_image_bytes(
     # Warm deepface's singleton model cache (represent() does not accept model=).
     _get_or_build_model(DeepFace, model_name)
 
-    suffix = ".jpg"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(image_bytes)
-        tmp_path = tmp.name
-
     try:
         t0 = time.perf_counter()
-        img_bgr = cv2.imread(tmp_path)
-        if img_bgr is None:
-            raise FacePipelineError("invalid_image", "Could not read the image file.")
+        img_bgr, _img_w, _img_h = _load_bgr_from_bytes(image_bytes)
 
-        detections: dict[str, Any] = RetinaFace.detect_faces(tmp_path) or {}
+        detections: dict[str, Any] = RetinaFace.detect_faces(img_bgr) or {}
         face_count = len(detections)
         if face_count == 0:
             raise FacePipelineError(
@@ -534,8 +525,12 @@ def analyze_image_bytes(
                 "Photo must contain exactly one face.",
             )
 
-        first_key = next(iter(detections))
-        face_obj = detections[first_key]
+        best_key = max(
+            detections,
+            key=lambda key: int(_parse_facial_area(detections[key])[2])
+            * int(_parse_facial_area(detections[key])[3]),
+        )
+        face_obj = detections[best_key]
         landmarks = face_obj.get("landmarks") or {}
         detected_pose, yaw_offset = estimate_pose_from_landmarks(landmarks)
 
@@ -590,5 +585,3 @@ def analyze_image_bytes(
     except Exception as exc:
         logger.exception("face_analysis_error", declared_pose=declared_pose)
         raise FacePipelineError("face_analysis_failed", str(exc)) from exc
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)

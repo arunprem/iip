@@ -25,7 +25,10 @@ Draft photos are stored under `suspect-photos/{dossier_draft_id}/` in MinIO. The
 |----------|---------|
 | `ELASTICSEARCH_URL` | `http://localhost:9200` |
 | `FACE_INDEX_NAME` | `iip-suspect-faces` |
-| `FACE_MATCH_MIN_SCORE` | `0.72` |
+| `FACE_IDENTIFY_MIN_COSINE` | `0.72` |
+| `FACE_DUPLICATE_MIN_COSINE` | `0.68` |
+| `FACE_MATCH_MIN_GAP` | `0.045` |
+| `FACE_LIVE_IDENTIFY_MIN_COSINE` | `0.70` |
 
 ## Run locally
 

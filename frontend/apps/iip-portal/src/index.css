@@ -1113,12 +1113,24 @@
     @apply hover:bg-iip-surface-hover hover:text-iip-text;
   }
 
+  .dossier-photo-avatar__action:disabled {
+    @apply cursor-not-allowed opacity-45 hover:bg-iip-surface hover:text-iip-text-muted;
+  }
+
   .dossier-photo-avatar__action--crop {
     @apply w-6 h-6 bottom-0 left-0 -translate-x-1 translate-y-0.5;
   }
 
   .dossier-photo-avatar__action--remove {
     @apply w-6 h-6 top-0 right-0 translate-x-1 -translate-y-0.5;
+  }
+
+  .dossier-photo-avatar__action--gallery {
+    @apply w-6 h-6 top-0 right-0 translate-x-1 -translate-y-0.5 text-pink-500;
+  }
+
+  .dossier-photo-avatar__action--gallery:not(:disabled) {
+    @apply hover:text-pink-600;
   }
 
   .dossier-photo-avatar__badge {

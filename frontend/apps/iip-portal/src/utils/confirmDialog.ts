@@ -316,6 +316,34 @@ export async function confirmRemoveUserOfficeAssignment(details: {
   return result.isConfirmed;
 }
 
+export async function confirmClearDossierDraft(details: {
+  hasStoredPhotos: boolean;
+}): Promise<boolean> {
+  const photoNote = details.hasStoredPhotos
+    ? '<p class="mt-2 text-amber-600">Uploaded draft photos will also be removed from storage.</p>'
+    : '';
+
+  const result = await Swal.fire({
+    ...swalBase,
+    title: 'Clear draft?',
+    html: `
+      <p>Discard all entered suspect dossier data and start over?</p>
+      ${photoNote}
+      <p class="mt-2">This cannot be undone.</p>
+    `,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, clear draft',
+    cancelButtonText: 'Cancel',
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#64748b',
+    focusCancel: true,
+    reverseButtons: true,
+  });
+
+  return result.isConfirmed;
+}
+
 export async function showPrivilegeDeleteBlocked(blockers: string[]): Promise<void> {
   const items = blockers
     .map((b) => `<li class="text-left">${escapeHtml(b)}</li>`)

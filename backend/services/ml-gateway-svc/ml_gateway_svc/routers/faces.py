@@ -66,7 +66,7 @@ class DuplicateMatchResponse(BaseModel):
     criminal_name: str | None = None
     storage_key: str | None = None
     pose_type: str
-    similarity_score: float = Field(description="Elasticsearch kNN cosine score (higher = more similar)")
+    similarity_score: float = Field(description="Exact cosine similarity 0–1 (higher = more similar)")
 
 
 class FaceAnalyzeResponse(BaseModel):
@@ -370,6 +370,8 @@ async def analyze_suspect_photo(
             analysis.embedding,
             exclude_dossier_draft_id=dossier_draft_id,
             exclude_face_id=face_id,
+            min_cosine=settings.face_duplicate_min_cosine,
+            apply_margin=False,
         )
 
     indexed = False
@@ -764,6 +766,8 @@ async def identify_suspect_face(
         analysis.embedding,
         exclude_dossier_draft_id=None,
         exclude_face_id=None,
+        min_cosine=settings.face_identify_min_cosine,
+        apply_margin=True,
     )
     dup_responses = [_match_to_response(m) for m in duplicate_matches]
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
@@ -812,7 +816,7 @@ async def identify_multiple_faces(
         )
 
     t0 = time.perf_counter()
-    live_match_min = 0.70
+    live_min = settings.face_live_identify_min_cosine
     try:
         multi = await asyncio.to_thread(
             analyze_all_faces_bytes,
@@ -846,11 +850,12 @@ async def identify_multiple_faces(
             exclude_dossier_draft_id=None,
             exclude_face_id=None,
             search_k=settings.face_live_search_k,
-            min_score=live_match_min,
+            min_cosine=live_min,
+            apply_margin=True,
         )
         top = duplicate_matches[0] if duplicate_matches else None
         similarity = round(top.score, 4) if top else None
-        matched = bool(top and top.score >= live_match_min)
+        matched = bool(top and top.score >= live_min)
         return FaceInFrameMatch(
             face_index=face.face_index,
             x=round(face.x / img_w, 4),
