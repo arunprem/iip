@@ -1,4 +1,3 @@
-import React from 'react'
 import { UserCheck } from 'lucide-react'
 
 /** Source (HUMINT) Vault — Stitch: 1487fc76e70b4842b3ba9e7dd9d8add1 */

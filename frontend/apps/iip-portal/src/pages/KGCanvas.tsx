@@ -1,4 +1,3 @@
-import React from 'react'
 import { Network } from 'lucide-react'
 
 /** Knowledge Graph Canvas — Stitch: 118728a1a25f4b859c06f5e1caeac95e */

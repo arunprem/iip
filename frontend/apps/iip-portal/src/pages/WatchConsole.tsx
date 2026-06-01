@@ -1,5 +1,4 @@
-import React from 'react'
-import { Radio, AlertTriangle, Monitor, Map, TrendingUp } from 'lucide-react'
+import { Radio, Monitor, Map, TrendingUp } from 'lucide-react'
 
 /** Watch Officer Console — Stitch: 93bea73a90f74bb0b2f735f34c489f0a */
 export default function WatchConsole() {

@@ -141,7 +141,7 @@ export function SuspectDossierReportView({
             />
             <figcaption>
               Primary (front)
-              {front?.face_id && (
+              {Boolean(front?.face_id) && (
                 <span className="suspect-report__frs-tag">FRS indexed</span>
               )}
             </figcaption>

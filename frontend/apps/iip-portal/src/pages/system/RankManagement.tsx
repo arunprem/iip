@@ -281,7 +281,7 @@ export default function RankManagement() {
           emptyMessage="No ranks defined."
           filters={[
             {
-              key: 'active',
+              id: 'active',
               label: 'Status',
               value: activeFilter,
               onChange: setActiveFilter,
@@ -292,7 +292,7 @@ export default function RankManagement() {
               ],
             },
             {
-              key: 'head',
+              id: 'head',
               label: 'Unit head',
               value: headFilter,
               onChange: setHeadFilter,

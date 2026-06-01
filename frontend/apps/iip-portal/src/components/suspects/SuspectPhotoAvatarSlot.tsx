@@ -11,6 +11,7 @@ import type { SuspectPhotoSlot } from '../../pages/suspects/suspectTypes';
 import {
   SuspectPoseSampleIllustration,
   poseHasSampleGuide,
+  type PoseSamplePose,
 } from './SuspectPoseSampleIllustration';
 
 export type SuspectAvatarSize = 'hero' | 'thumb';
@@ -51,7 +52,8 @@ export function SuspectPhotoAvatarSlot({
 }: SuspectPhotoAvatarSlotProps) {
   const hasPhoto = Boolean(slot.previewUrl);
   const showActions = hasPhoto && !isBusy && !disabled;
-  const showPoseSample = !hasPhoto && poseHasSampleGuide(slot.poseType);
+  const samplePose: PoseSamplePose | null =
+    !hasPhoto && poseHasSampleGuide(slot.poseType) ? slot.poseType : null;
 
   return (
     <div
@@ -92,10 +94,10 @@ export function SuspectPhotoAvatarSlot({
               className="dossier-photo-avatar__img"
               onError={onPreviewError}
             />
-          ) : showPoseSample ? (
+          ) : samplePose ? (
             <span className="dossier-photo-avatar__placeholder dossier-photo-avatar__placeholder--sample">
               <SuspectPoseSampleIllustration
-                pose={slot.poseType}
+                pose={samplePose}
                 className="dossier-photo-avatar__sample"
               />
               <span className="dossier-photo-avatar__sample-badge">Example</span>

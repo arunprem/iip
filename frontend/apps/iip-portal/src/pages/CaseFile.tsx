@@ -1,4 +1,3 @@
-import React from 'react'
 import { FolderOpen } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 

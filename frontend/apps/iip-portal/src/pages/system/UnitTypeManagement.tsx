@@ -233,7 +233,7 @@ export default function UnitTypeManagement() {
           emptyMessage="No unit types defined."
           filters={[
             {
-              key: 'active',
+              id: 'active',
               label: 'Status',
               value: activeFilter,
               onChange: setActiveFilter,

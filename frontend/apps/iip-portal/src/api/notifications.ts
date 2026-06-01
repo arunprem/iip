@@ -12,14 +12,16 @@ export interface NotificationRecord {
 }
 
 export async function fetchNotificationHistory(limit = 50, offset = 0) {
-  return apiClient.get<NotificationRecord[]>('/notifications', {
+  const res = await apiClient.get<NotificationRecord[]>('/notifications', {
     params: { limit, offset },
     skipToast: true,
   });
+  return res.data;
 }
 
 export async function fetchNotificationById(id: string) {
-  return apiClient.get<NotificationRecord>(`/notifications/${id}`, { skipToast: true });
+  const res = await apiClient.get<NotificationRecord>(`/notifications/${id}`, { skipToast: true });
+  return res.data;
 }
 
 export async function markNotificationReadApi(id: string) {

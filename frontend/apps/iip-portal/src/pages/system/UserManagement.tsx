@@ -497,7 +497,7 @@ export default function UserManagement() {
           emptyMessage="No users found."
           filters={[
             {
-              key: 'active',
+              id: 'active',
               label: 'Status',
               value: activeFilter,
               onChange: setActiveFilter,

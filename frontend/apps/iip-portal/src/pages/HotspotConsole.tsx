@@ -1,4 +1,3 @@
-import React from 'react'
 import { MapPin } from 'lucide-react'
 
 /** Hotspot & Risk Console — Stitch: b163ccf115b44688bc59effa77e584b1 */

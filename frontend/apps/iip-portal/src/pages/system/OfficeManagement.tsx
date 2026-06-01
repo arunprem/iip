@@ -356,7 +356,6 @@ export default function OfficeManagement() {
     },
   });
 
-  const unitTypeById = useMemo(() => new Map(unitTypes.map((t) => [t.id, t])), [unitTypes]);
   const rankById = useMemo(() => new Map(ranks.map((r) => [r.id, r])), [ranks]);
 
   const { data: tree = [], isLoading, refetch, isError: treeError } = useQuery({

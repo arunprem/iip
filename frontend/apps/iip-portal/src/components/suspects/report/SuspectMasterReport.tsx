@@ -81,7 +81,7 @@ export function SuspectMasterReport({ profile }: { profile: MasterProfileData })
             )}
             <figcaption>
               Primary front
-              {frontPhoto?.office_name && (
+              {Boolean(frontPhoto?.office_name) && (
                 <span className="block text-[9px] font-normal normal-case mt-0.5">
                   {str(frontPhoto.office_name)}
                 </span>
