@@ -375,7 +375,8 @@ async def analyze_suspect_photo(
         )
 
     indexed = False
-    if submitted_suspect_id:
+    if submitted_suspect_id and pose == POSE_FRONT:
+        await _face_index.delete_suspect_faces_except(submitted_suspect_id, face_id)
         indexed = await _face_index.safe_index_face(
             face_id=face_id,
             photo_id=photo_id,
@@ -514,6 +515,8 @@ async def index_submitted_front_face(
             detail=exc.message,
             meta={"reason": exc.code, "field": "storage_key"},
         ) from exc
+
+    await _face_index.delete_suspect_faces_except(body.suspect_id, body.face_id)
 
     indexed = await _face_index.safe_index_face(
         face_id=body.face_id,

@@ -128,6 +128,24 @@ class FaceIndexService:
         }
         await es.index(index=self._settings.face_index_name, id=face_id, document=doc)
 
+    async def delete_suspect_faces_except(self, suspect_id: str, keep_face_id: str) -> None:
+        """Remove stale FRS vectors when a suspect's front photo is replaced."""
+        if not self.enabled:
+            return
+        es = self._client_or_create()
+        await es.delete_by_query(
+            index=self._settings.face_index_name,
+            body={
+                "query": {
+                    "bool": {
+                        "filter": [{"term": {"suspect_id": suspect_id}}],
+                        "must_not": [{"term": {"face_id": keep_face_id}}],
+                    }
+                }
+            },
+            refresh=True,
+        )
+
     async def delete_face(self, face_id: str) -> None:
         if not self.enabled:
             return

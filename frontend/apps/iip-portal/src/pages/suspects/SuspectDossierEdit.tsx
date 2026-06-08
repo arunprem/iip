@@ -13,6 +13,7 @@ import { SuspectRelativesStep } from '../../components/suspects/steps/SuspectRel
 import { SuspectReviewStep } from '../../components/suspects/steps/SuspectReviewStep';
 import { SuspectSocialStep } from '../../components/suspects/steps/SuspectSocialStep';
 import { getSuspectDossierDetail, updateSuspectDossier } from '../../api/suspectDossiers';
+import { indexSubmittedSuspectFace } from '../../api/suspectFaces';
 import { showToast } from '../../stores/toastStore';
 import { WIZARD_STEPS } from './suspectFormDefaults';
 import { dossierDetailToDraft } from './suspectDetailMappers';
@@ -122,6 +123,26 @@ export default function SuspectDossierEdit() {
     setSubmitting(true);
     try {
       await updateSuspectDossier(dossierId, draft);
+
+      const frontSlot = draft.photos.find((p) => p.poseType === 'FRONT');
+      if (
+        frontSlot?.faceId &&
+        frontSlot.storageKey &&
+        draft.editingMasterSuspectId
+      ) {
+        const indexResult = await indexSubmittedSuspectFace({
+          suspectId: draft.editingMasterSuspectId,
+          dossierDraftId: draft.dossierDraftId,
+          photoId: frontSlot.id,
+          storageKey: frontSlot.storageKey,
+          faceId: frontSlot.faceId,
+          criminalName: draft.criminalName,
+        });
+        if (!indexResult.indexed && indexResult.message) {
+          showToast('warning', indexResult.message);
+        }
+      }
+
       showToast('success', 'Dossier updated.');
       navigate(`/suspects/${dossierId}`);
     } catch {

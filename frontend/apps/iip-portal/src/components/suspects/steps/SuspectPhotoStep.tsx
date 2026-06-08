@@ -290,6 +290,7 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoT
         dossierDraftId: draft.dossierDraftId,
         photoId: slot.id,
         criminalName: draft.criminalName,
+        suspectId: draft.editingMasterSuspectId,
         replaceFaceId: slot.faceId ?? undefined,
       });
 
