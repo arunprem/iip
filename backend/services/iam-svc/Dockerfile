@@ -42,4 +42,4 @@ EXPOSE 8010
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8010/healthz || exit 1
 
-CMD ["uv", "run", "--directory", "backend/services/iam-svc", "uvicorn", "iam_svc.main:app", "--host", "0.0.0.0", "--port", "8010", "--workers", "2"]
+CMD ["uv", "run", "--no-sync", "--directory", "backend/services/iam-svc", "uvicorn", "iam_svc.main:app", "--host", "0.0.0.0", "--port", "8010", "--workers", "2"]
