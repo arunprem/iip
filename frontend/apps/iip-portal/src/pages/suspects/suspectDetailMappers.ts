@@ -118,10 +118,14 @@ export function dossierDetailToDraft(detail: Record<string, unknown>): SuspectDo
     detail.has_different_present_address === true ||
     (presRow != null && Object.keys(presRow).length > 0);
 
+  const dossierId = str(detail.dossier_id);
+  const dossierDraftId = str(detail.dossier_draft_id) || dossierId || crypto.randomUUID();
+
   return {
-    dossierDraftId: str(detail.dossier_draft_id) || crypto.randomUUID(),
-    editingDossierId: str(detail.dossier_id) || undefined,
+    dossierDraftId,
+    editingDossierId: dossierId || undefined,
     editingMasterSuspectId: str(detail.master_suspect_id) || undefined,
+    editingChildSuspectId: str(detail.suspect_id) || undefined,
     photos: mapPhotos(detail),
     criminalName: str(identity.criminal_name),
     aliasName: str(identity.alias_name),
@@ -146,6 +150,7 @@ export function dossierDetailToDraft(detail: Record<string, unknown>): SuspectDo
 
 export function draftToUpdatePayload(draft: SuspectDossierDraft) {
   return {
+    dossierDraftId: draft.dossierDraftId,
     criminalName: draft.criminalName,
     aliasName: draft.aliasName,
     gender: draft.gender,

@@ -101,6 +101,8 @@ export interface SuspectDossierDraft {
   /** Set when editing an existing dossier (exclude self from link suggestions). */
   editingDossierId?: string;
   editingMasterSuspectId?: string;
+  /** Child suspect row id — used to purge legacy FRS index entries on photo replace. */
+  editingChildSuspectId?: string;
   /** Permanent / native address (always saved). */
   address: SuspectAddress;
   /** Present / current address when different from permanent. */

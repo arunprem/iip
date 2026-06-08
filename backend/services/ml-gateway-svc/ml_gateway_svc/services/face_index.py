@@ -126,19 +126,38 @@ class FaceIndexService:
             "created_at": datetime.now(UTC).isoformat(),
             "face_embedding": normalize_embedding(embedding),
         }
-        await es.index(index=self._settings.face_index_name, id=face_id, document=doc)
+        await es.index(index=self._settings.face_index_name, id=face_id, document=doc, refresh=True)
 
-    async def delete_suspect_faces_except(self, suspect_id: str, keep_face_id: str) -> None:
-        """Remove stale FRS vectors when a suspect's front photo is replaced."""
+    async def purge_faces_before_reindex(
+        self,
+        keep_face_id: str,
+        *,
+        master_suspect_id: str | None = None,
+        child_suspect_id: str | None = None,
+        dossier_draft_id: str | None = None,
+    ) -> None:
+        """Remove stale FRS vectors for a dossier/suspect before writing a new front embedding."""
         if not self.enabled:
             return
+
+        should: list[dict[str, Any]] = []
+        if master_suspect_id:
+            should.append({"term": {"suspect_id": master_suspect_id}})
+        if child_suspect_id and child_suspect_id != master_suspect_id:
+            should.append({"term": {"suspect_id": child_suspect_id}})
+        if dossier_draft_id:
+            should.append({"term": {"dossier_draft_id": dossier_draft_id}})
+        if not should:
+            return
+
         es = self._client_or_create()
         await es.delete_by_query(
             index=self._settings.face_index_name,
             body={
                 "query": {
                     "bool": {
-                        "filter": [{"term": {"suspect_id": suspect_id}}],
+                        "should": should,
+                        "minimum_should_match": 1,
                         "must_not": [{"term": {"face_id": keep_face_id}}],
                     }
                 }
@@ -151,7 +170,7 @@ class FaceIndexService:
             return
         es = self._client_or_create()
         try:
-            await es.delete(index=self._settings.face_index_name, id=face_id)
+            await es.delete(index=self._settings.face_index_name, id=face_id, refresh=True)
         except NotFoundError:
             pass
 

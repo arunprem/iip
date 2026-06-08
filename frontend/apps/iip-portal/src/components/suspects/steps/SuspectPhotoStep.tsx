@@ -291,6 +291,7 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoT
         photoId: slot.id,
         criminalName: draft.criminalName,
         suspectId: draft.editingMasterSuspectId,
+        childSuspectId: draft.editingChildSuspectId,
         replaceFaceId: slot.faceId ?? undefined,
       });
 

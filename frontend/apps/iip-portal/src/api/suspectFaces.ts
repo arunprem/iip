@@ -81,6 +81,8 @@ export async function analyzeSuspectPhoto(params: {
   criminalName?: string;
   /** When set, indexes the face for duplicate search (submitted dossier). */
   suspectId?: string;
+  /** Child suspect row id — clears legacy FRS vectors on photo replace. */
+  childSuspectId?: string;
   replaceFaceId?: string;
 }): Promise<FaceAnalyzeResult> {
   const form = new FormData();
@@ -93,6 +95,9 @@ export async function analyzeSuspectPhoto(params: {
   }
   if (params.suspectId?.trim()) {
     form.append('suspect_id', params.suspectId.trim());
+  }
+  if (params.childSuspectId?.trim()) {
+    form.append('child_suspect_id', params.childSuspectId.trim());
   }
   if (params.replaceFaceId) {
     form.append('replace_face_id', params.replaceFaceId);
@@ -146,6 +151,7 @@ export async function indexSubmittedSuspectFace(params: {
   storageKey: string;
   faceId: string;
   criminalName: string;
+  childSuspectId?: string;
 }): Promise<IndexSubmittedFaceResponse> {
   const res = await apiClient.post<IndexSubmittedFaceResponse>(
     '/ml/faces/index-submitted',
@@ -156,6 +162,7 @@ export async function indexSubmittedSuspectFace(params: {
       storage_key: params.storageKey,
       face_id: params.faceId,
       criminal_name: params.criminalName,
+      ...(params.childSuspectId ? { child_suspect_id: params.childSuspectId } : {}),
     },
     { skipSuccessToast: true }
   );

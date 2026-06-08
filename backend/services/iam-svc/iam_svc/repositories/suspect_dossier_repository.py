@@ -462,6 +462,9 @@ class SuspectDossierRepository:
         if not dossier:
             return None
 
+        if payload.get("dossier_draft_id") and dossier.dossier_draft_id is None:
+            dossier.dossier_draft_id = payload["dossier_draft_id"]
+
         suspect = dossier.suspect
         suspect.criminal_name = payload["criminal_name"].strip()
         suspect.alias_name = _optional_str(payload.get("alias_name"))

@@ -123,6 +123,7 @@ class LinkDecisionInput(BaseModel):
 class UpdateSuspectDossierRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
+    dossier_draft_id: str | None = Field(None, alias="dossierDraftId")
     criminal_name: str = Field(min_length=1, max_length=255, alias="criminalName")
     alias_name: str = Field(default="", alias="aliasName")
     gender: str = ""
@@ -383,7 +384,14 @@ def _addresses_from_request(
 
 def _update_request_to_repo_payload(body: UpdateSuspectDossierRequest) -> dict[str, Any]:
     permanent, present = _addresses_from_request(body)
+    draft_id = None
+    if body.dossier_draft_id and body.dossier_draft_id.strip():
+        try:
+            draft_id = uuid.UUID(body.dossier_draft_id.strip())
+        except ValueError:
+            draft_id = None
     return {
+        "dossier_draft_id": draft_id,
         "criminal_name": body.criminal_name,
         "alias_name": body.alias_name,
         "gender": body.gender,
@@ -799,6 +807,23 @@ async def update_suspect_dossier(
     detail["message"] = f"Dossier updated for {dossier.suspect.criminal_name}."
     detail["can_view_master"] = await can_read_master(role, db)
     detail["can_edit"] = True
+
+    front_photo_row = next(
+        (p for p in dossier.suspect.photos if p.pose_type == "FRONT"),
+        None,
+    )
+    if front_photo_row:
+        detail["front_photo"] = {
+            "photo_id": str(front_photo_row.photo_id),
+            "pose_type": front_photo_row.pose_type,
+            "storage_key": front_photo_row.storage_key,
+            "face_id": str(front_photo_row.face_id) if front_photo_row.face_id else None,
+            "detected_pose": front_photo_row.detected_pose,
+            "face_detected": front_photo_row.face_detected,
+            "face_count": front_photo_row.face_count,
+            "sort_order": front_photo_row.sort_order,
+        }
+
     logger.info(
         "suspect_dossier_updated",
         dossier_id=str(dossier.id),

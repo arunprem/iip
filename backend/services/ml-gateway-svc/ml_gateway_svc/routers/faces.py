@@ -101,6 +101,7 @@ class IndexSubmittedFaceRequest(BaseModel):
     storage_key: str
     face_id: str
     criminal_name: str | None = None
+    child_suspect_id: str | None = None
 
 
 class IndexSubmittedFaceResponse(BaseModel):
@@ -132,6 +133,7 @@ async def analyze_suspect_photo(
     photo_id: str = Form(...),
     criminal_name: str | None = Form(None),
     suspect_id: str | None = Form(None),
+    child_suspect_id: str | None = Form(None),
     replace_face_id: str | None = Form(None),
 ) -> FaceAnalyzeResponse:
     """
@@ -358,9 +360,21 @@ async def analyze_suspect_photo(
             detail="Photo storage is not available",
         ) from exc
 
+    submitted_child_suspect_id: str | None = None
+    if child_suspect_id and child_suspect_id.strip():
+        try:
+            uuid.UUID(child_suspect_id.strip())
+            submitted_child_suspect_id = child_suspect_id.strip()
+        except ValueError as exc:
+            raise IIPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error_code=ErrorCode.VALIDATION_ERROR,
+                detail="child_suspect_id must be a valid UUID when provided",
+            ) from exc
+
     face_id = ""
     if pose == POSE_FRONT:
-        face_id = replace_face_id or new_face_id()
+        face_id = new_face_id()
         if replace_face_id:
             await _face_index.delete_face(replace_face_id)
 
@@ -376,7 +390,12 @@ async def analyze_suspect_photo(
 
     indexed = False
     if submitted_suspect_id and pose == POSE_FRONT:
-        await _face_index.delete_suspect_faces_except(submitted_suspect_id, face_id)
+        await _face_index.purge_faces_before_reindex(
+            face_id,
+            master_suspect_id=submitted_suspect_id,
+            child_suspect_id=submitted_child_suspect_id,
+            dossier_draft_id=dossier_draft_id,
+        )
         indexed = await _face_index.safe_index_face(
             face_id=face_id,
             photo_id=photo_id,
@@ -516,7 +535,12 @@ async def index_submitted_front_face(
             meta={"reason": exc.code, "field": "storage_key"},
         ) from exc
 
-    await _face_index.delete_suspect_faces_except(body.suspect_id, body.face_id)
+    await _face_index.purge_faces_before_reindex(
+        body.face_id,
+        master_suspect_id=body.suspect_id,
+        child_suspect_id=body.child_suspect_id,
+        dossier_draft_id=body.dossier_draft_id,
+    )
 
     indexed = await _face_index.safe_index_face(
         face_id=body.face_id,

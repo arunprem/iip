@@ -20,6 +20,10 @@ import { dossierDetailToDraft } from './suspectDetailMappers';
 import { hasValidatedFrontPhoto, photosStepBlockedReason, stepCompletion } from './suspectFormUtils';
 import type { SuspectDossierDraft, WizardStepId } from './suspectTypes';
 
+function str(v: unknown): string {
+  return v != null ? String(v) : '';
+}
+
 export default function SuspectDossierEdit() {
   const { dossierId } = useParams<{ dossierId: string }>();
   const navigate = useNavigate();
@@ -122,21 +126,34 @@ export default function SuspectDossierEdit() {
     }
     setSubmitting(true);
     try {
-      await updateSuspectDossier(dossierId, draft);
+      const updated = await updateSuspectDossier(dossierId, draft);
 
+      const frontFromApi = updated.front_photo as
+        | {
+            photo_id?: string;
+            storage_key?: string;
+            face_id?: string | null;
+          }
+        | undefined;
       const frontSlot = draft.photos.find((p) => p.poseType === 'FRONT');
-      if (
-        frontSlot?.faceId &&
-        frontSlot.storageKey &&
-        draft.editingMasterSuspectId
-      ) {
+      const masterSuspectId =
+        str(updated.master_suspect_id) || draft.editingMasterSuspectId;
+      const childSuspectId = str(updated.suspect_id) || draft.editingChildSuspectId;
+      const dossierDraftId =
+        str(updated.dossier_draft_id) || draft.dossierDraftId;
+      const photoId = frontFromApi?.photo_id || frontSlot?.id;
+      const storageKey = frontFromApi?.storage_key || frontSlot?.storageKey;
+      const faceId = frontFromApi?.face_id || frontSlot?.faceId;
+
+      if (faceId && storageKey && photoId && masterSuspectId) {
         const indexResult = await indexSubmittedSuspectFace({
-          suspectId: draft.editingMasterSuspectId,
-          dossierDraftId: draft.dossierDraftId,
-          photoId: frontSlot.id,
-          storageKey: frontSlot.storageKey,
-          faceId: frontSlot.faceId,
+          suspectId: masterSuspectId,
+          dossierDraftId,
+          photoId,
+          storageKey,
+          faceId,
           criminalName: draft.criminalName,
+          childSuspectId,
         });
         if (!indexResult.indexed && indexResult.message) {
           showToast('warning', indexResult.message);

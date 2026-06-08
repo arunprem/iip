@@ -65,6 +65,19 @@ class MobileMapRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def latest_dossier_id_by_master(self, master_suspect_id: uuid.UUID) -> uuid.UUID | None:
+        stmt = (
+            select(SuspectDossier.id)
+            .where(
+                SuspectDossier.master_suspect_id == master_suspect_id,
+                SuspectDossier.status == "SUBMITTED",
+            )
+            .order_by(SuspectDossier.submitted_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def dossier_id_by_draft_id(self, dossier_draft_id: uuid.UUID) -> uuid.UUID | None:
         stmt = (
             select(SuspectDossier.id)
@@ -86,6 +99,9 @@ class MobileMapRepository:
     ) -> uuid.UUID | None:
         if suspect_id is not None:
             found = await self.latest_dossier_id(suspect_id)
+            if found is not None:
+                return found
+            found = await self.latest_dossier_id_by_master(suspect_id)
             if found is not None:
                 return found
         if dossier_draft_id is not None:
