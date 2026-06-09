@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Check } from 'lucide-react';
 import type { WizardStepId } from '../../pages/suspects/suspectTypes';
 import { WIZARD_STEPS } from '../../pages/suspects/suspectFormDefaults';
@@ -14,9 +15,19 @@ export function SuspectWizardStepper({
   onStepClick,
 }: SuspectWizardStepperProps) {
   const currentIndex = WIZARD_STEPS.findIndex((s) => s.id === currentStep);
+  const navRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const active = nav.querySelector('.dossier-wizard-step-btn--current');
+    if (active instanceof HTMLElement) {
+      active.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
+    }
+  }, [currentStep]);
 
   return (
-    <nav className="dossier-wizard-nav" aria-label="Dossier entry progress">
+    <nav ref={navRef} className="dossier-wizard-nav" aria-label="Dossier entry progress">
       <ol className="dossier-wizard-steps">
         {WIZARD_STEPS.map((step, index) => {
           const isCurrent = step.id === currentStep;

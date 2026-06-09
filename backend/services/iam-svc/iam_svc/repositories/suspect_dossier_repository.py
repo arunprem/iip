@@ -16,6 +16,7 @@ from iam_svc.models.suspect_link_decision import SuspectLinkDecision
 from iam_svc.models.suspect_dossier import (
     Suspect,
     SuspectAddress,
+    SuspectAssociate,
     SuspectContact,
     SuspectDossier,
     SuspectMaster,
@@ -315,6 +316,14 @@ class SuspectDossierRepository:
             )
 
         self._add_related_records(suspect.id, dossier.id, payload)
+        await self._sync_associates(
+            suspect_id=suspect.id,
+            dossier_id=dossier.id,
+            source_master_id=master.id,
+            associates=payload.get("associates") or [],
+            created_by=created_by,
+            office_id=office_id,
+        )
         await self.session.flush()
         return master, suspect, dossier
 
@@ -502,6 +511,9 @@ class SuspectDossierRepository:
         await self.session.execute(
             delete(SuspectRelative).where(SuspectRelative.suspect_id == suspect.id)
         )
+        await self.session.execute(
+            delete(SuspectAssociate).where(SuspectAssociate.suspect_id == suspect.id)
+        )
 
         for contact in payload.get("contacts") or []:
             value = _optional_str(contact.get("value"))
@@ -540,6 +552,15 @@ class SuspectDossierRepository:
                     occupation=_optional_str(relative.get("occupation")),
                 )
             )
+
+        await self._sync_associates(
+            suspect_id=suspect.id,
+            dossier_id=dossier.id,
+            source_master_id=dossier.master_suspect_id,
+            associates=payload.get("associates") or [],
+            created_by=suspect.created_by,
+            office_id=dossier.office_id,
+        )
 
         # Sync photos
         if "photos" in payload:
@@ -585,6 +606,297 @@ class SuspectDossierRepository:
 
         await self.session.flush()
         return dossier
+
+    async def find_master_by_name(self, name: str) -> SuspectMaster | None:
+        needle = name.strip().lower()
+        if not needle:
+            return None
+        stmt = (
+            select(SuspectMaster)
+            .where(func.lower(SuspectMaster.display_name) == needle)
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def search_suspect_profiles(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        alias: str | None = None,
+        gender: str | None = None,
+        fathers_name: str | None = None,
+        age: int | None = None,
+        has_photo: bool | None = None,
+        exclude_master_id: uuid.UUID | None = None,
+    ) -> tuple[list[dict], bool]:
+        """Search suspect master profiles with optional drill-down filters."""
+        needle = query.strip().lower()
+        if len(needle) < 2:
+            return [], False
+
+        name_match = or_(
+            func.lower(SuspectMaster.display_name).contains(needle),
+            func.lower(Suspect.criminal_name).contains(needle),
+            func.lower(func.coalesce(Suspect.alias_name, "")).contains(needle),
+        )
+        filters = [name_match]
+
+        if alias and alias.strip():
+            filters.append(
+                func.lower(func.coalesce(Suspect.alias_name, "")).contains(alias.strip().lower())
+            )
+        if gender and gender.strip():
+            filters.append(func.lower(func.coalesce(Suspect.gender, "")) == gender.strip().lower())
+        if fathers_name and fathers_name.strip():
+            filters.append(
+                func.lower(func.coalesce(Suspect.fathers_name, "")).contains(
+                    fathers_name.strip().lower()
+                )
+            )
+        if age is not None:
+            filters.append(Suspect.age == age)
+        if has_photo:
+            filters.append(
+                exists(
+                    select(SuspectPhoto.id).where(
+                        SuspectPhoto.suspect_id == Suspect.id,
+                        SuspectPhoto.storage_key != "",
+                    )
+                )
+            )
+        if exclude_master_id:
+            filters.append(SuspectMaster.id != exclude_master_id)
+
+        fetch_cap = max((offset + limit + 1) * 4, 40)
+        stmt = (
+            select(SuspectMaster, Suspect, SuspectDossier)
+            .join(SuspectDossier, SuspectDossier.master_suspect_id == SuspectMaster.id)
+            .join(Suspect, Suspect.id == SuspectDossier.suspect_id)
+            .options(selectinload(Suspect.photos))
+            .where(*filters)
+            .order_by(SuspectDossier.submitted_at.desc())
+            .limit(fetch_cap)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        seen: set[uuid.UUID] = set()
+        deduped: list[dict] = []
+        for master, suspect, dossier in rows:
+            if master.id in seen:
+                continue
+            seen.add(master.id)
+            front = next(
+                (p for p in suspect.photos if p.pose_type == "FRONT" and p.storage_key),
+                None,
+            )
+            if front is None:
+                front = next((p for p in suspect.photos if p.storage_key), None)
+            deduped.append(
+                {
+                    "master_suspect_id": str(master.id),
+                    "display_name": master.display_name,
+                    "criminal_name": suspect.criminal_name,
+                    "alias_name": suspect.alias_name,
+                    "dossier_id": str(dossier.id),
+                    "gender": suspect.gender,
+                    "fathers_name": suspect.fathers_name,
+                    "age": suspect.age,
+                    "photo_id": str(front.photo_id) if front else None,
+                    "dossier_draft_id": (
+                        str(dossier.dossier_draft_id) if dossier.dossier_draft_id else None
+                    ),
+                    "storage_key": front.storage_key if front else None,
+                }
+            )
+
+        page = deduped[offset : offset + limit]
+        has_more = len(deduped) > offset + limit
+        return page, has_more
+
+    async def _resolve_associate_master(
+        self,
+        *,
+        name: str,
+        linked_master_id: uuid.UUID | None,
+        created_by: uuid.UUID,
+        office_id: uuid.UUID | None,
+    ) -> tuple[uuid.UUID, uuid.UUID | None, str]:
+        """Return (master_id, linked_suspect_id, display_name) for an associate."""
+        clean_name = name.strip()
+        if linked_master_id:
+            master = await self.get_master(linked_master_id)
+            if master:
+                stmt = (
+                    select(Suspect)
+                    .join(SuspectDossier, SuspectDossier.suspect_id == Suspect.id)
+                    .where(SuspectDossier.master_suspect_id == master.id)
+                    .order_by(SuspectDossier.submitted_at.desc())
+                    .limit(1)
+                )
+                row = (await self.session.execute(stmt)).scalar_one_or_none()
+                return master.id, row.id if row else None, master.display_name
+
+        existing = await self.find_master_by_name(clean_name)
+        if existing:
+            stmt = (
+                select(Suspect)
+                .join(SuspectDossier, SuspectDossier.suspect_id == Suspect.id)
+                .where(SuspectDossier.master_suspect_id == existing.id)
+                .order_by(SuspectDossier.submitted_at.desc())
+                .limit(1)
+            )
+            row = (await self.session.execute(stmt)).scalar_one_or_none()
+            if row:
+                return existing.id, row.id, existing.display_name
+
+        master = SuspectMaster(display_name=clean_name)
+        self.session.add(master)
+        await self.session.flush()
+        stub = Suspect(
+            criminal_name=clean_name,
+            created_by=created_by,
+            office_id=office_id,
+        )
+        self.session.add(stub)
+        await self.session.flush()
+        return master.id, stub.id, clean_name
+
+    async def _sync_associates(
+        self,
+        *,
+        suspect_id: uuid.UUID,
+        dossier_id: uuid.UUID,
+        source_master_id: uuid.UUID,
+        associates: list[dict],
+        created_by: uuid.UUID,
+        office_id: uuid.UUID | None,
+    ) -> list[dict]:
+        """Persist associates and return resolved rows for Neo4j sync."""
+        resolved: list[dict] = []
+        for item in associates:
+            name = _optional_str(item.get("name"))
+            if not name:
+                continue
+            linked_raw = item.get("linked_master_suspect_id")
+            linked_master_id: uuid.UUID | None = None
+            if linked_raw:
+                try:
+                    linked_master_id = uuid.UUID(str(linked_raw))
+                except ValueError:
+                    linked_master_id = None
+
+            master_id, linked_suspect_id, display_name = await self._resolve_associate_master(
+                name=name,
+                linked_master_id=linked_master_id,
+                created_by=created_by,
+                office_id=office_id,
+            )
+            if str(master_id) == str(source_master_id):
+                continue
+
+            self.session.add(
+                SuspectAssociate(
+                    suspect_id=suspect_id,
+                    dossier_id=dossier_id,
+                    name=display_name,
+                    association_type=_optional_str(item.get("association_type")),
+                    occupation=_optional_str(item.get("occupation")),
+                    notes=_optional_str(item.get("notes")),
+                    linked_master_suspect_id=master_id,
+                    linked_suspect_id=linked_suspect_id,
+                )
+            )
+            resolved.append(
+                {
+                    "master_id": str(master_id),
+                    "display_name": display_name,
+                    "association_type": _optional_str(item.get("association_type")) or "ASSOCIATE",
+                    "dossier_id": str(dossier_id),
+                }
+            )
+        return resolved
+
+    async def relatives_for_graph(self, master_id: uuid.UUID) -> list[dict]:
+        """Family relatives from all dossiers under this master profile."""
+        stmt = (
+            select(SuspectRelative, SuspectDossier)
+            .join(Suspect, Suspect.id == SuspectRelative.suspect_id)
+            .join(SuspectDossier, SuspectDossier.suspect_id == Suspect.id)
+            .where(SuspectDossier.master_suspect_id == master_id)
+            .order_by(SuspectDossier.submitted_at.desc())
+        )
+        rows = (await self.session.execute(stmt)).all()
+        seen: set[str] = set()
+        relatives: list[dict] = []
+        for relative, dossier in rows:
+            rel_id = str(relative.id)
+            if rel_id in seen:
+                continue
+            seen.add(rel_id)
+            relatives.append(
+                {
+                    "id": rel_id,
+                    "name": relative.name,
+                    "relation": relative.relation or "Relative",
+                    "gender": relative.gender,
+                    "dossier_id": str(dossier.id),
+                }
+            )
+        return relatives
+
+    async def associates_for_graph_sync(self, dossier_id: uuid.UUID) -> list[dict]:
+        stmt = select(SuspectAssociate).where(SuspectAssociate.dossier_id == dossier_id)
+        rows = (await self.session.execute(stmt)).scalars().all()
+        return [
+            {
+                "master_id": str(row.linked_master_suspect_id),
+                "display_name": row.name,
+                "association_type": row.association_type or "ASSOCIATE",
+                "dossier_id": str(row.dossier_id),
+            }
+            for row in rows
+            if row.linked_master_suspect_id
+        ]
+
+    async def get_master_graph_profiles(
+        self,
+        master_ids: list[uuid.UUID],
+    ) -> dict[str, dict]:
+        """Latest dossier identity + front photo per master (for knowledge-graph nodes)."""
+        if not master_ids:
+            return {}
+
+        stmt = (
+            select(SuspectDossier, Suspect)
+            .join(Suspect, Suspect.id == SuspectDossier.suspect_id)
+            .options(selectinload(Suspect.photos))
+            .where(SuspectDossier.master_suspect_id.in_(master_ids))
+            .order_by(SuspectDossier.submitted_at.desc())
+        )
+        rows = (await self.session.execute(stmt)).all()
+        profiles: dict[str, dict] = {}
+        for dossier, suspect in rows:
+            key = str(dossier.master_suspect_id)
+            if key in profiles:
+                continue
+            front = next(
+                (p for p in suspect.photos if p.pose_type == "FRONT" and p.storage_key),
+                None,
+            )
+            if front is None:
+                front = next((p for p in suspect.photos if p.storage_key), None)
+            profiles[key] = {
+                "criminal_name": suspect.criminal_name,
+                "gender": suspect.gender,
+                "photo_id": str(front.photo_id) if front else None,
+                "dossier_draft_id": (
+                    str(dossier.dossier_draft_id) if dossier.dossier_draft_id else None
+                ),
+                "storage_key": front.storage_key if front else None,
+            }
+        return profiles
 
     async def get_master(self, master_id: uuid.UUID) -> SuspectMaster | None:
         result = await self.session.execute(
@@ -844,6 +1156,7 @@ class SuspectDossierRepository:
                 selectinload(SuspectDossier.suspect).selectinload(Suspect.contacts),
                 selectinload(SuspectDossier.suspect).selectinload(Suspect.social_accounts),
                 selectinload(SuspectDossier.suspect).selectinload(Suspect.relatives),
+                selectinload(SuspectDossier.suspect).selectinload(Suspect.associates),
                 selectinload(SuspectDossier.suspect).selectinload(Suspect.photos),
             )
             .where(SuspectDossier.id == dossier_id)

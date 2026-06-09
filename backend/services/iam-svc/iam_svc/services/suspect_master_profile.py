@@ -143,6 +143,18 @@ def build_dossier_detail(
             }
             for r in suspect.relatives
         ],
+        "associates": [
+            {
+                "name": a.name,
+                "association_type": a.association_type,
+                "occupation": a.occupation,
+                "notes": a.notes,
+                "linked_master_suspect_id": (
+                    str(a.linked_master_suspect_id) if a.linked_master_suspect_id else None
+                ),
+            }
+            for a in suspect.associates
+        ],
         "photos": [
             _photo_dict(
                 p,

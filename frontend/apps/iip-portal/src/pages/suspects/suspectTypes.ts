@@ -45,6 +45,20 @@ export interface SuspectRelative {
   occupation: string;
 }
 
+export type { AssociateType } from './suspectAssociateConstants';
+
+import type { AssociateType } from './suspectAssociateConstants';
+
+export interface SuspectAssociate {
+  id: string;
+  name: string;
+  associationType: AssociateType | string;
+  occupation: string;
+  notes: string;
+  /** When matched to an existing dossier profile */
+  linkedMasterSuspectId: string | null;
+}
+
 export interface FaceDuplicateMatch {
   face_id: string;
   photo_id: string | null;
@@ -122,6 +136,7 @@ export interface SuspectDossierDraft {
   contacts: SuspectContact[];
   socialAccounts: SuspectSocialAccount[];
   relatives: SuspectRelative[];
+  associates: SuspectAssociate[];
   linkDecision: SuspectLinkDecision | null;
   photoGeoTag?: { latitude: number; longitude: number } | null;
   updatedAt: string;

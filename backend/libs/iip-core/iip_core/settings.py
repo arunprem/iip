@@ -125,6 +125,18 @@ class BaseServiceSettings(BaseSettings):
     s3_region: str = "us-east-1"
     s3_use_ssl: bool = False
 
+    # ── Neo4j (Knowledge Graph) ───────────────────────────────────────────────
+    neo4j_enabled: bool = Field(
+        default=True,
+        description="When true, suspect associate links are mirrored to Neo4j",
+    )
+    neo4j_uri: str = Field(
+        default="bolt://localhost:7687",
+        description="Neo4j bolt URI for knowledge graph",
+    )
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = Field(default="iip_neo4j_password")
+
     # ── Observability ──────────────────────────────────────────────────────────
     otlp_endpoint: str | None = None
     log_level: str = "INFO"

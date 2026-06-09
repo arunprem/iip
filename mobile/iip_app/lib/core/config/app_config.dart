@@ -1,12 +1,12 @@
-/// API base URL at build/run time:
-/// - iOS Simulator / desktop: `http://127.0.0.1:8010`
-/// - Android emulator: `http://10.0.2.2:8010`
-/// - Physical Android/iOS on Wi‑Fi: Mac **Wi‑Fi** IP (not Ethernet if you have both)
-///   Example: `http://192.168.1.59:8010` — verify with `ipconfig getifaddr en1` on Mac
+/// API base URL at build/run time (host + port only — `/api/v1` is appended automatically):
+/// - Physical phone on Wi‑Fi: Mac **Wi‑Fi** IP, e.g. `http://192.168.1.59:8010`
+/// - iOS Simulator / desktop: override with `--dart-define=API_BASE_URL=http://127.0.0.1:8010`
+/// - Android emulator: `--dart-define=API_BASE_URL=http://10.0.2.2:8010`
+/// Verify Wi‑Fi IP: `ipconfig getifaddr en1` on Mac
 class AppConfig {
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:8010',
+    defaultValue: 'http://192.168.1.59:8010',
   );
 
   static const String apiPrefix = '/api/v1';

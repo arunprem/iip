@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Users } from 'lucide-react';
 import { getMasterSuspectProfile } from '../../api/suspectDossiers';
 import { AdminPageLayout } from '../../components/admin/AdminPageLayout';
@@ -8,8 +8,21 @@ import {
   type MasterProfileData,
 } from '../../components/suspects/report/SuspectMasterReport';
 
+interface ProfileReturnState {
+  returnTo?: string;
+  returnLabel?: string;
+}
+
 export default function SuspectMasterProfile() {
   const { masterId } = useParams<{ masterId: string }>();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const navState = location.state as ProfileReturnState | null;
+  const fromKgCanvas = searchParams.get('from') === 'kg-canvas';
+  const returnTo = navState?.returnTo ?? (fromKgCanvas ? '/kg-canvas' : '/suspects');
+  const returnLabel =
+    navState?.returnLabel ?? (fromKgCanvas ? 'Back to network analysis' : 'Back to list');
+
   const [profile, setProfile] = useState<MasterProfileData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -49,9 +62,9 @@ export default function SuspectMasterProfile() {
       description="Consolidated watch-list record across all linked unit dossiers."
       icon={Users}
       actions={
-        <Link to="/suspects" className="btn-ghost btn btn-sm inline-flex items-center gap-1.5">
+        <Link to={returnTo} className="btn-ghost btn btn-sm inline-flex items-center gap-1.5">
           <ArrowLeft size={16} />
-          Back to list
+          {returnLabel}
         </Link>
       }
     >

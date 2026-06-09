@@ -16,6 +16,7 @@ from iam_svc.models.suspect_dossier import (
     SuspectMaster,
     SuspectPhoto,
     SuspectRelative,
+    SuspectAssociate,
     SuspectSocialAccount,
     QuickSuspectCapture,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "SuspectContact",
     "SuspectSocialAccount",
     "SuspectRelative",
+    "SuspectAssociate",
     "SuspectPhoto",
     "SuspectLinkDecision",
     "QuickSuspectCapture",

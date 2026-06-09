@@ -51,6 +51,7 @@ from .routers import ranks as ranks_router
 from .routers import unit_types as unit_types_router
 from .routers import office_lookups as office_lookups_router
 from .routers import suspect_dossiers as suspect_dossiers_router
+from .routers import knowledge_graph as knowledge_graph_router
 
 settings = BaseServiceSettings(service_name="iam-svc")
 logger = get_logger(__name__)
@@ -235,6 +236,11 @@ def create_app() -> FastAPI:
         suspect_dossiers_router.router,
         prefix="/api/v1/intelligence/suspect-dossiers",
         tags=["suspect-dossiers"],
+    )
+    app.include_router(
+        knowledge_graph_router.router,
+        prefix="/api/v1/intelligence/knowledge-graph",
+        tags=["knowledge-graph"],
     )
 
     # ── OpenTelemetry Instrumentation ─────────────────────────────────────────

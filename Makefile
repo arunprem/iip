@@ -51,20 +51,28 @@ ml-gateway-dev:
 		--reload-dir ../../libs/iip-llm/iip_llm
 
 # Flutter mobile app (requires Flutter SDK). Android emulator: use 10.0.2.2 for localhost.
+WIFI_IF ?= $(shell networksetup -listallhardwareports 2>/dev/null | awk '/Hardware Port: (Wi-Fi|AirPort)/{getline; if (/^Device:/) print $$2}')
+API_WIFI ?= http://$(shell ipconfig getifaddr $(WIFI_IF) 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo 192.168.1.59):8010
+
 mobile-bootstrap:
 	cd mobile/iip_app && flutter create . --project-name iip_app --org gov.in.iip
 
 mobile-dev:
 	cd mobile/iip_app && flutter pub get && flutter run \
-		--dart-define=API_BASE_URL=http://127.0.0.1:8010
+		--dart-define=API_BASE_URL=$(API_WIFI) \
+		--dart-define=ML_BASE_URL=$(subst :8010,:8020,$(API_WIFI))
 
 mobile-dev-android:
 	cd mobile/iip_app && flutter pub get && flutter run \
 		--dart-define=API_BASE_URL=http://10.0.2.2:8010
 
-# Physical phone on same Wi‑Fi — uses Mac LAN IP automatically
+# Physical phone on same Wi‑Fi — uses Mac Wi‑Fi IP automatically (verbose Gradle output)
 mobile-dev-device:
 	cd mobile/iip_app && $(MAKE) mobile-dev-device
+
+# Override Wi‑Fi IP: make mobile-dev-ip API_DEVICE=http://192.168.1.59:8010
+mobile-dev-ip:
+	cd mobile/iip_app && $(MAKE) mobile-dev-ip API_DEVICE=$(API_DEVICE)
 
 run: docker-up
 	pnpm --filter iip-portal run dev & \

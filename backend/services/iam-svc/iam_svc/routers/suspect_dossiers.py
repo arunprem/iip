@@ -23,6 +23,7 @@ from iam_svc.dependencies import (
     require_suspect_master_read,
 )
 from iam_svc.models.role import Role
+from iam_svc.services.knowledge_graph_service import sync_dossier_associates_to_graph
 from iam_svc.models.suspect_dossier import SuspectDossier
 from iam_svc.repositories.suspect_dossier_repository import SuspectDossierRepository
 from iam_svc.services.permission_service import PermissionService
@@ -88,6 +89,17 @@ class SuspectRelativeInput(BaseModel):
     occupation: str = ""
 
 
+class SuspectAssociateInput(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    name: str = ""
+    association_type: str = Field(default="ASSOCIATE", alias="associationType")
+    occupation: str = ""
+    notes: str = ""
+    linked_master_suspect_id: str | None = Field(None, alias="linkedMasterSuspectId")
+
+
 class SuspectPhotoInput(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -140,6 +152,7 @@ class UpdateSuspectDossierRequest(BaseModel):
     contacts: list[SuspectContactInput] = Field(default_factory=list)
     social_accounts: list[SuspectSocialInput] = Field(default_factory=list, alias="socialAccounts")
     relatives: list[SuspectRelativeInput] = Field(default_factory=list)
+    associates: list[SuspectAssociateInput] = Field(default_factory=list)
     photos: list[SuspectPhotoInput] = Field(default_factory=list)
 
 
@@ -163,6 +176,7 @@ class CreateSuspectDossierRequest(BaseModel):
     contacts: list[SuspectContactInput] = Field(default_factory=list)
     social_accounts: list[SuspectSocialInput] = Field(default_factory=list, alias="socialAccounts")
     relatives: list[SuspectRelativeInput] = Field(default_factory=list)
+    associates: list[SuspectAssociateInput] = Field(default_factory=list)
     photos: list[SuspectPhotoInput] = Field(default_factory=list)
     link_master_id: str | None = Field(None, alias="linkMasterId")
     link_decision: LinkDecisionInput | None = Field(None, alias="linkDecision")
@@ -424,6 +438,7 @@ def _update_request_to_repo_payload(body: UpdateSuspectDossierRequest) -> dict[s
             for r in body.relatives
             if r.name.strip()
         ],
+        "associates": _associates_to_repo(body.associates),
         "photos": [
             {
                 "photo_id": uuid.UUID(p.id),
@@ -439,6 +454,29 @@ def _update_request_to_repo_payload(body: UpdateSuspectDossierRequest) -> dict[s
             if p.storage_key
         ],
     }
+
+
+def _associates_to_repo(associates: list[SuspectAssociateInput]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in associates:
+        if not item.name.strip():
+            continue
+        linked = None
+        if item.linked_master_suspect_id and item.linked_master_suspect_id.strip():
+            try:
+                linked = uuid.UUID(item.linked_master_suspect_id.strip())
+            except ValueError:
+                linked = None
+        rows.append(
+            {
+                "name": item.name.strip(),
+                "association_type": (item.association_type or "ASSOCIATE").upper(),
+                "occupation": item.occupation,
+                "notes": item.notes,
+                "linked_master_suspect_id": linked,
+            }
+        )
+    return rows
 
 
 def _request_to_repo_payload(body: CreateSuspectDossierRequest) -> dict[str, Any]:
@@ -477,6 +515,7 @@ def _request_to_repo_payload(body: CreateSuspectDossierRequest) -> dict[str, Any
             for r in body.relatives
             if r.name.strip()
         ],
+        "associates": _associates_to_repo(body.associates),
         "photos": [
             {
                 "photo_id": uuid.UUID(p.id),
@@ -655,6 +694,13 @@ async def create_suspect_dossier(
         else f"Dossier saved for {suspect.criminal_name}."
     )
 
+    kg_associates = await repo.associates_for_graph_sync(dossier.id)
+    await sync_dossier_associates_to_graph(
+        master_id=master.id,
+        display_name=suspect.criminal_name,
+        associates=kg_associates,
+    )
+
     logger.info(
         "suspect_dossier_created",
         dossier_id=str(dossier.id),
@@ -801,6 +847,13 @@ async def update_suspect_dossier(
             error_code=ErrorCode.NOT_FOUND,
             detail="Dossier not found",
         )
+
+    kg_associates = await repo.associates_for_graph_sync(dossier.id)
+    await sync_dossier_associates_to_graph(
+        master_id=dossier.master_suspect_id,
+        display_name=dossier.suspect.criminal_name,
+        associates=kg_associates,
+    )
 
     office_name = await repo.get_office_name(dossier.office_id)
     detail = build_dossier_detail(dossier, office_name)

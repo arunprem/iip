@@ -76,6 +76,14 @@ function draftToCreatePayload(
     contacts: draft.contacts,
     socialAccounts: draft.socialAccounts,
     relatives: draft.relatives,
+    associates: draft.associates.map((a) => ({
+      id: a.id,
+      name: a.name,
+      associationType: a.associationType,
+      occupation: a.occupation,
+      notes: a.notes,
+      linkedMasterSuspectId: a.linkedMasterSuspectId,
+    })),
     photos: draft.photos.map((p) => ({
       id: p.id,
       poseType: p.poseType,

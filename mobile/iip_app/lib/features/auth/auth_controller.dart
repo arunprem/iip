@@ -109,8 +109,16 @@ class AuthController extends ChangeNotifier {
       _api.setOfficeId(officeId);
     }
 
-    // App lock is local — show unlock before any network call (works when JWT expired).
+    // App lock is local — but dead server sessions should go to password login, not unlock.
     if (await deviceLock.isLockActive()) {
+      if (!await _refreshAccessTokenIfNeeded()) {
+        await _clearSessionToLogin('Session expired. Please sign in again.');
+        return;
+      }
+      final refreshedAccess = await _storage.readAccess();
+      if (refreshedAccess != null && refreshedAccess.isNotEmpty) {
+        _api.setAccessToken(refreshedAccess);
+      }
       status = AuthStatus.needsDeviceUnlock;
       _startProactiveRefreshTimer();
       return;
@@ -202,6 +210,16 @@ class AuthController extends ChangeNotifier {
     } catch (_) {
       return false;
     }
+  }
+
+  /// True when a stored access token is present and not past JWT `exp`.
+  Future<bool> _refreshAccessTokenIfNeeded() async {
+    var access = await _storage.readAccess();
+    final accessMissing = access == null || access.isEmpty;
+    final accessExpired =
+        !accessMissing && jwtExpiresWithin(access!, Duration.zero);
+    if (!accessMissing && !accessExpired) return true;
+    return _tryRefreshTokens();
   }
 
   @override
@@ -325,6 +343,7 @@ class AuthController extends ChangeNotifier {
     _clearProfilePhotoMemory();
     status = AuthStatus.unauthenticated;
     errorMessage = message;
+    notifyListeners();
   }
 
   void _loadProfileInBackground() {
@@ -477,23 +496,32 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> _enterAuthenticated({required bool loadProfile}) async {
+    if (!await _refreshAccessTokenIfNeeded()) {
+      await _clearSessionToLogin('Session expired. Please sign in again.');
+      return;
+    }
+
     try {
       await _apiWithRefresh(_loadSession);
     } on ApiException catch (e) {
-      if (_isAuthApiError(e)) {
-        await _clearSessionToLogin(
-          e.message.isNotEmpty ? e.message : 'Session expired. Please sign in again.',
-        );
+      if (status == AuthStatus.unauthenticated || _isAuthApiError(e)) {
+        if (status != AuthStatus.unauthenticated) {
+          await _clearSessionToLogin(
+            e.message.isNotEmpty ? e.message : 'Session expired. Please sign in again.',
+          );
+        }
         return;
       }
       status = AuthStatus.needsDeviceUnlock;
       errorMessage = 'Network unavailable. Check connection and try again.';
       return;
     } catch (_) {
+      if (status == AuthStatus.unauthenticated) return;
       status = AuthStatus.needsDeviceUnlock;
       errorMessage = 'Network unavailable. Check connection and try again.';
       return;
     }
+
     if (profile == null && user == null) {
       try {
         await _apiWithRefresh(_fetchUser);
@@ -504,8 +532,22 @@ class AuthController extends ChangeNotifier {
           );
           return;
         }
-      } catch (_) {}
+        status = AuthStatus.needsDeviceUnlock;
+        errorMessage = 'Network unavailable. Check connection and try again.';
+        return;
+      } catch (_) {
+        if (status == AuthStatus.unauthenticated) return;
+        status = AuthStatus.needsDeviceUnlock;
+        errorMessage = 'Network unavailable. Check connection and try again.';
+        return;
+      }
     }
+
+    if (user == null && session == null) {
+      await _clearSessionToLogin('Session expired. Please sign in again.');
+      return;
+    }
+
     if (loadProfile) {
       _loadProfileInBackground();
     }

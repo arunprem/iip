@@ -19,7 +19,7 @@
 
 Web and mobile use **separate Keycloak clients** so portal activity (idle lock, refresh, sign-out) does not invalidate the mobile app session. Mobile requests `client_type: mobile` on login/refresh; the portal defaults to `web`.
 
-Mobile client session idle is **1 day** (`client.session.idle.timeout` = 86400s) with `offline_access` for longer-lived refresh when the browser SSO session ends.
+Mobile client refresh tokens last up to **30 days** (`client.session.idle.timeout` and `client.session.max.lifespan` = 2592000s). Web portal sessions stay shorter so idle lock / sign-out there does not affect the phone.
 | Bootstrap user | `admin` / `ChangeMe@IIP2026!` (matches `init.sql`) |
 
 ## Start

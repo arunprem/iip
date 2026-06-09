@@ -3,6 +3,7 @@ import '../../core/motion/iip_page_route.dart';
 import '../../core/theme/iip_colors.dart';
 import '../../models/mobile_session.dart';
 import '../home/module_placeholder_screen.dart';
+import '../knowledge_graph/knowledge_graph_screen.dart';
 
 class MobileWidgetTile extends StatelessWidget {
   const MobileWidgetTile({super.key, required this.widget, required this.colors});
@@ -41,6 +42,10 @@ class MobileWidgetTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
+          if (widget.widgetKey == 'kg-canvas') {
+            context.pushSmooth(const KnowledgeGraphScreen());
+            return;
+          }
           context.pushSmooth(ModulePlaceholderScreen(widget: widget));
         },
         child: Card(

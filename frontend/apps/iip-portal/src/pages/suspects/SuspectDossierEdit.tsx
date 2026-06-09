@@ -230,7 +230,11 @@ export default function SuspectDossierEdit() {
         );
       case 'relatives':
         return (
-          <SuspectRelativesStep draft={draft} onChange={(relatives) => patchDraft({ relatives })} />
+          <SuspectRelativesStep
+            draft={draft}
+            onRelativesChange={(relatives) => patchDraft({ relatives })}
+            onAssociatesChange={(associates) => patchDraft({ associates })}
+          />
         );
       case 'review':
         return (

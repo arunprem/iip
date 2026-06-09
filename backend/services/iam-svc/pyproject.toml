@@ -26,6 +26,7 @@ dependencies = [
   "pyotp>=2.9.0",
   "qrcode>=7.4.2",
   "cryptography>=42.0.0",
+  "neo4j>=5.20.0",
 ]
 
 [tool.uv.sources]

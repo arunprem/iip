@@ -73,6 +73,12 @@ class Suspect(Base):
     relatives: Mapped[list["SuspectRelative"]] = relationship(
         "SuspectRelative", back_populates="suspect", lazy="selectin"
     )
+    associates: Mapped[list["SuspectAssociate"]] = relationship(
+        "SuspectAssociate",
+        back_populates="suspect",
+        foreign_keys="SuspectAssociate.suspect_id",
+        lazy="selectin",
+    )
     photos: Mapped[list["SuspectPhoto"]] = relationship(
         "SuspectPhoto", back_populates="suspect", lazy="selectin"
     )
@@ -120,6 +126,9 @@ class SuspectDossier(Base):
     )
     photos: Mapped[list["SuspectPhoto"]] = relationship(
         "SuspectPhoto", back_populates="dossier", lazy="selectin"
+    )
+    associates: Mapped[list["SuspectAssociate"]] = relationship(
+        "SuspectAssociate", back_populates="dossier", lazy="selectin"
     )
 
 
@@ -197,6 +206,50 @@ class SuspectRelative(Base):
     occupation: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     suspect: Mapped["Suspect"] = relationship("Suspect", back_populates="relatives", lazy="selectin")
+
+
+class SuspectAssociate(Base):
+    """Operational associate linked to a suspect dossier (may reference another profile)."""
+
+    __tablename__ = "suspect_associates"
+    __table_args__ = {"schema": "intelligence"}
+
+    suspect_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    dossier_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspect_dossiers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    association_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    occupation: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linked_master_suspect_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspect_masters.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    linked_suspect_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspects.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    suspect: Mapped["Suspect"] = relationship(
+        "Suspect",
+        back_populates="associates",
+        foreign_keys=[suspect_id],
+        lazy="selectin",
+    )
+    dossier: Mapped["SuspectDossier"] = relationship(
+        "SuspectDossier",
+        back_populates="associates",
+        lazy="selectin",
+    )
 
 
 class SuspectPhoto(Base):

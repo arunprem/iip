@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/motion/iip_page_route.dart';
 import '../../core/theme/iip_colors.dart';
 import '../../models/suspect_dossier_detail.dart';
 import '../auth/auth_controller.dart';
+import '../knowledge_graph/knowledge_graph_screen.dart';
 import 'dossier_photo_viewer_screen.dart';
 import 'suspect_repository.dart';
 
@@ -176,6 +178,28 @@ class _DossierBody extends StatelessWidget {
                     colors: colors,
                     distanceM: distanceM,
                   ),
+                  if (detail.canViewMaster && detail.masterSuspectId.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          context.pushSmooth(
+                            KnowledgeGraphScreen(
+                              initialMasterSuspectId: detail.masterSuspectId,
+                              initialDisplayName: name,
+                              initialDossierId: detail.dossierId,
+                            ),
+                          );
+                        },
+                        icon: Icon(Icons.hub_outlined, color: colors.primary, size: 18),
+                        label: Text(
+                          'View associate network',
+                          style: TextStyle(color: colors.primary, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   _OfficerVisibilityBanner(detail: detail, colors: colors),
                   const SizedBox(height: 20),

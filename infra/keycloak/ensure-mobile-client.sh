@@ -45,7 +45,7 @@ print(json.dumps({
   "fullScopeAllowed": True,
   "secret": "$CLIENT_SECRET",
   "attributes": {
-    "client.session.idle.timeout": "86400",
+    "client.session.idle.timeout": "2592000",
     "client.session.max.lifespan": "2592000",
   },
 }))

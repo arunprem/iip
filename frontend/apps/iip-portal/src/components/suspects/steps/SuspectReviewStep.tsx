@@ -403,12 +403,12 @@ export function SuspectReviewStep({ draft, onEditStep, onLinkDecision }: Suspect
 
         <ReportSection
           number="VI"
-          title="Associates, relatives & whereabouts"
+          title="Relatives & whereabouts"
           step="relatives"
           onEdit={onEditStep}
         >
           {draft.relatives.length === 0 ? (
-            <p className="suspect-report__empty">No relatives or associates recorded.</p>
+            <p className="suspect-report__empty">No relatives recorded.</p>
           ) : (
             <table className="suspect-report__table suspect-report__table--list">
               <thead>
@@ -426,6 +426,38 @@ export function SuspectReviewStep({ draft, onEditStep, onLinkDecision }: Suspect
                     <td>{r.relation || '—'}</td>
                     <td>{r.gender || '—'}</td>
                     <td>{r.occupation || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </ReportSection>
+
+        <ReportSection
+          number="VII"
+          title="Operational associates"
+          step="relatives"
+          onEdit={onEditStep}
+        >
+          {(draft.associates ?? []).length === 0 ? (
+            <p className="suspect-report__empty">No operational associates recorded.</p>
+          ) : (
+            <table className="suspect-report__table suspect-report__table--list">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Occupation</th>
+                  <th>Linked profile</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(draft.associates ?? []).map((a) => (
+                  <tr key={a.id}>
+                    <td>{a.name || '—'}</td>
+                    <td>{a.associationType || '—'}</td>
+                    <td>{a.occupation || '—'}</td>
+                    <td>{a.linkedMasterSuspectId ? 'Yes' : 'New profile'}</td>
                   </tr>
                 ))}
               </tbody>

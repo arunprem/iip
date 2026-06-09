@@ -1,6 +1,8 @@
 import { emptyAddress, emptyDossierDraft, emptyPresentAddress } from './suspectFormDefaults';
 import type { SuspectAddress, SuspectDossierDraft, SuspectPhotoSlot } from './suspectTypes';
 
+export { newRowId } from './suspectRowIds';
+
 export function addressHasContent(addr: SuspectAddress): boolean {
   return Boolean(
     addr.villageTownCity.trim() ||
@@ -24,6 +26,7 @@ export function normalizeDossierDraft(
       ? { ...emptyPresentAddress(), ...parsed.presentAddress, isPermanent: false }
       : emptyPresentAddress(),
     hasDifferentPresentAddress: parsed.hasDifferentPresentAddress ?? false,
+    associates: parsed.associates ?? [],
     linkDecision: parsed.linkDecision ?? null,
   };
 
@@ -46,12 +49,6 @@ export function updatePhotoSlot(
   patch: Partial<SuspectPhotoSlot>
 ): SuspectPhotoSlot[] {
   return photos.map((p) => (p.id === slotId ? { ...p, ...patch } : p));
-}
-
-export function newRowId(): string {
-  return typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `row-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 export function syncAgeFromDob(dateOfBirth: string): Pick<SuspectDossierDraft, 'age' | 'yearOfBirth'> {
@@ -118,6 +115,7 @@ export function stepCompletion(draft: SuspectDossierDraft): Record<string, boole
   const hasContacts = draft.contacts.some((c) => c.value.trim());
   const hasSocial = draft.socialAccounts.some((s) => s.details.trim());
   const hasRelatives = draft.relatives.some((r) => r.name.trim());
+  const hasAssociates = (draft.associates ?? []).some((a) => a.name.trim());
 
   return {
     photo: hasPhoto,
@@ -125,7 +123,7 @@ export function stepCompletion(draft: SuspectDossierDraft): Record<string, boole
     address: hasAddress,
     contacts: hasContacts,
     social: hasSocial,
-    relatives: hasRelatives,
+    relatives: hasRelatives || hasAssociates,
     review: hasPhoto && hasIdentity,
   };
 }

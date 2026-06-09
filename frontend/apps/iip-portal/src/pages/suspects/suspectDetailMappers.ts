@@ -34,6 +34,23 @@ function mapSocial(raw: unknown): SuspectDossierDraft['socialAccounts'] {
   });
 }
 
+function mapAssociates(raw: unknown): SuspectDossierDraft['associates'] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((a) => {
+    const row = a as Record<string, unknown>;
+    return {
+      id: crypto.randomUUID(),
+      name: str(row.name),
+      associationType: str(row.association_type) || 'ASSOCIATE',
+      occupation: str(row.occupation),
+      notes: str(row.notes),
+      linkedMasterSuspectId: row.linked_master_suspect_id
+        ? str(row.linked_master_suspect_id)
+        : null,
+    };
+  });
+}
+
 function mapRelatives(raw: unknown): SuspectDossierDraft['relatives'] {
   if (!Array.isArray(raw)) return [];
   return raw.map((r) => {
@@ -143,6 +160,7 @@ export function dossierDetailToDraft(detail: Record<string, unknown>): SuspectDo
     contacts: mapContacts(detail.contacts),
     socialAccounts: mapSocial(detail.social_accounts),
     relatives: mapRelatives(detail.relatives),
+    associates: mapAssociates(detail.associates),
     linkDecision: null,
     updatedAt: new Date().toISOString(),
   };
@@ -165,6 +183,14 @@ export function draftToUpdatePayload(draft: SuspectDossierDraft) {
     contacts: draft.contacts,
     socialAccounts: draft.socialAccounts,
     relatives: draft.relatives,
+    associates: draft.associates.map((a) => ({
+      id: a.id,
+      name: a.name,
+      associationType: a.associationType,
+      occupation: a.occupation,
+      notes: a.notes,
+      linkedMasterSuspectId: a.linkedMasterSuspectId,
+    })),
     photos: draft.photos
       .filter((p) => p.status === 'validated' || p.status === 'duplicate')
       .map((p) => ({

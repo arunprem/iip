@@ -74,6 +74,7 @@ class _DeviceLockUnlockScreenState extends State<DeviceLockUnlockScreen> {
     if (outcome == BiometricAuthOutcome.success) {
       await auth.completeDeviceUnlock();
       if (!mounted) return;
+      if (auth.status == AuthStatus.unauthenticated) return;
       if (auth.status != AuthStatus.authenticated) {
         final msg = auth.errorMessage ?? 'Could not unlock. Please sign in again.';
         setState(() {
@@ -110,6 +111,7 @@ class _DeviceLockUnlockScreenState extends State<DeviceLockUnlockScreen> {
     if (ok) {
       await auth.completeDeviceUnlock();
       if (!mounted) return;
+      if (auth.status == AuthStatus.unauthenticated) return;
       if (auth.status != AuthStatus.authenticated) {
         final msg = auth.errorMessage ?? 'Could not unlock. Please sign in again.';
         setState(() {

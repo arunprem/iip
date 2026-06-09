@@ -4,7 +4,10 @@ import type {
   SuspectPhotoPoseType,
   SuspectPhotoSlot,
 } from './suspectTypes';
-import { newRowId } from './suspectFormUtils';
+import { newRowId } from './suspectRowIds';
+
+export { ASSOCIATION_TYPE_OPTIONS } from './suspectAssociateConstants';
+export type { AssociateType } from './suspectAssociateConstants';
 
 export const DOSSIER_DRAFT_STORAGE_KEY = 'iip-suspect-dossier-draft-v2';
 
@@ -133,6 +136,7 @@ export function emptyDossierDraft(): SuspectDossierDraft {
     contacts: [],
     socialAccounts: [],
     relatives: [],
+    associates: [],
     linkDecision: null,
     updatedAt: new Date().toISOString(),
   };
@@ -171,9 +175,9 @@ export const WIZARD_STEPS = [
   },
   {
     id: 'relatives',
-    label: 'Whereabouts & relatives',
-    shortLabel: 'Relatives',
-    description: 'Associates and family connections.',
+    label: 'Relatives & associates',
+    shortLabel: 'Links',
+    description: 'Family, whereabouts, and operational associates linked to other dossier profiles.',
   },
   {
     id: 'review',

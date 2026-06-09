@@ -289,7 +289,8 @@ export default function SuspectDossierCreate() {
         return (
           <SuspectRelativesStep
             draft={draft}
-            onChange={(relatives) => patchDraft({ relatives })}
+            onRelativesChange={(relatives) => patchDraft({ relatives })}
+            onAssociatesChange={(associates) => patchDraft({ associates })}
           />
         );
       case 'review':
