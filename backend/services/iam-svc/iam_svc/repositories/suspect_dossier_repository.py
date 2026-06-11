@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import re
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import delete, exists, func, or_, select
+from sqlalchemy import String, and_, cast, delete, exists, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,6 +22,7 @@ from iam_svc.models.suspect_dossier import (
     SuspectContact,
     SuspectDossier,
     SuspectMaster,
+    SuspectFingerprint,
     SuspectPhoto,
     SuspectRelative,
     SuspectSocialAccount,
@@ -190,6 +193,15 @@ def _parse_decimal(value: str | None) -> Decimal | None:
     try:
         return Decimal(value.strip())
     except (InvalidOperation, ValueError):
+        return None
+
+
+def _decode_template_b64(value: object | None) -> bytes | None:
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return base64.b64decode(value)
+    except Exception:
         return None
 
 
@@ -462,6 +474,31 @@ class SuspectDossierRepository:
                 )
             )
 
+        for sort_order, fp in enumerate(payload.get("fingerprints") or []):
+            template_bytes = _decode_template_b64(fp.get("template_data_b64"))
+            if not template_bytes:
+                continue
+            template_id = fp.get("template_id")
+            if not isinstance(template_id, uuid.UUID):
+                template_id = uuid.UUID(str(template_id))
+            print_id_raw = fp.get("print_id")
+            print_id = uuid.UUID(str(print_id_raw)) if print_id_raw else None
+            self.session.add(
+                SuspectFingerprint(
+                    suspect_id=suspect_id,
+                    dossier_id=dossier_id,
+                    template_id=template_id,
+                    print_id=print_id,
+                    finger_position=str(fp.get("finger_position") or "RIGHT_THUMB").upper(),
+                    template_format=str(fp.get("template_format") or "ISO19794-2").upper(),
+                    template_data=template_bytes,
+                    template_hash=hashlib.sha256(template_bytes).hexdigest(),
+                    quality_score=fp.get("quality_score"),
+                    device_model=_optional_str(fp.get("device_model")),
+                    sort_order=sort_order,
+                )
+            )
+
     async def update_dossier(
         self,
         dossier_id: uuid.UUID,
@@ -604,6 +641,52 @@ class SuspectDossierRepository:
                         )
                     )
 
+        if "fingerprints" in payload:
+            existing_fps = {f.template_id: f for f in suspect.fingerprints}
+            new_fps: dict[uuid.UUID, dict] = {}
+            for fp in payload["fingerprints"]:
+                template_bytes = _decode_template_b64(fp.get("template_data_b64"))
+                if not template_bytes:
+                    continue
+                tid = fp.get("template_id")
+                if not isinstance(tid, uuid.UUID):
+                    tid = uuid.UUID(str(tid))
+                new_fps[tid] = {**fp, "template_data": template_bytes}
+
+            for tid, row in list(existing_fps.items()):
+                if tid not in new_fps:
+                    await self.session.delete(row)
+
+            for sort_order, (tid, fp_data) in enumerate(new_fps.items()):
+                print_id_raw = fp_data.get("print_id")
+                print_id = uuid.UUID(str(print_id_raw)) if print_id_raw else None
+                if tid in existing_fps:
+                    row = existing_fps[tid]
+                    row.finger_position = str(fp_data.get("finger_position") or "RIGHT_THUMB").upper()
+                    row.template_format = str(fp_data.get("template_format") or "ISO19794-2").upper()
+                    row.template_data = fp_data["template_data"]
+                    row.template_hash = hashlib.sha256(fp_data["template_data"]).hexdigest()
+                    row.quality_score = fp_data.get("quality_score")
+                    row.device_model = _optional_str(fp_data.get("device_model"))
+                    row.print_id = print_id
+                    row.sort_order = sort_order
+                else:
+                    self.session.add(
+                        SuspectFingerprint(
+                            suspect_id=suspect.id,
+                            dossier_id=dossier.id,
+                            template_id=tid,
+                            print_id=print_id,
+                            finger_position=str(fp_data.get("finger_position") or "RIGHT_THUMB").upper(),
+                            template_format=str(fp_data.get("template_format") or "ISO19794-2").upper(),
+                            template_data=fp_data["template_data"],
+                            template_hash=hashlib.sha256(fp_data["template_data"]).hexdigest(),
+                            quality_score=fp_data.get("quality_score"),
+                            device_model=_optional_str(fp_data.get("device_model")),
+                            sort_order=sort_order,
+                        )
+                    )
+
         await self.session.flush()
         return dossier
 
@@ -619,31 +702,24 @@ class SuspectDossierRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def search_suspect_profiles(
-        self,
-        query: str,
-        *,
-        limit: int = 20,
-        offset: int = 0,
-        alias: str | None = None,
-        gender: str | None = None,
-        fathers_name: str | None = None,
-        age: int | None = None,
-        has_photo: bool | None = None,
-        exclude_master_id: uuid.UUID | None = None,
-    ) -> tuple[list[dict], bool]:
-        """Search suspect master profiles with optional drill-down filters."""
-        needle = query.strip().lower()
-        if len(needle) < 2:
-            return [], False
-
-        name_match = or_(
+    def _profile_search_name_match(self, needle: str):
+        return or_(
             func.lower(SuspectMaster.display_name).contains(needle),
             func.lower(Suspect.criminal_name).contains(needle),
             func.lower(func.coalesce(Suspect.alias_name, "")).contains(needle),
         )
-        filters = [name_match]
 
+    def _profile_search_detail_filters(
+        self,
+        *,
+        alias: str | None,
+        gender: str | None,
+        fathers_name: str | None,
+        age: int | None,
+        has_photo: bool | None,
+        exclude_master_id: uuid.UUID | None,
+    ) -> list:
+        filters: list = []
         if alias and alias.strip():
             filters.append(
                 func.lower(func.coalesce(Suspect.alias_name, "")).contains(alias.strip().lower())
@@ -669,51 +745,278 @@ class SuspectDossierRepository:
             )
         if exclude_master_id:
             filters.append(SuspectMaster.id != exclude_master_id)
+        return filters
 
-        fetch_cap = max((offset + limit + 1) * 4, 40)
+    def _front_photo(self, suspect: Suspect) -> SuspectPhoto | None:
+        front = next(
+            (p for p in suspect.photos if p.pose_type == "FRONT" and p.storage_key),
+            None,
+        )
+        if front is None:
+            front = next((p for p in suspect.photos if p.storage_key), None)
+        return front
+
+    def _profile_hit_dict(
+        self,
+        *,
+        master: SuspectMaster,
+        suspect: Suspect,
+        dossier: SuspectDossier | None,
+        office_name: str | None,
+        profile_kind: str,
+    ) -> dict:
+        front = self._front_photo(suspect)
+        return {
+            "master_suspect_id": str(master.id),
+            "display_name": master.display_name,
+            "criminal_name": suspect.criminal_name,
+            "alias_name": suspect.alias_name,
+            "dossier_id": str(dossier.id) if dossier else None,
+            "gender": suspect.gender,
+            "fathers_name": suspect.fathers_name,
+            "age": suspect.age,
+            "photo_id": str(front.photo_id) if front else None,
+            "dossier_draft_id": (
+                str(dossier.dossier_draft_id)
+                if dossier and dossier.dossier_draft_id
+                else None
+            ),
+            "storage_key": front.storage_key if front else None,
+            "office_name": office_name,
+            "profile_kind": profile_kind,
+            "link_status": dossier.link_status if dossier else None,
+        }
+
+    async def _profile_hits_for_master_ids(
+        self,
+        master_ids: list[uuid.UUID],
+    ) -> dict[str, dict]:
+        """Resolve latest dossier or associate-stub identity per master."""
+        if not master_ids:
+            return {}
+
+        latest_sq = (
+            select(
+                SuspectDossier.master_suspect_id.label("master_id"),
+                func.max(SuspectDossier.submitted_at).label("max_submitted"),
+            )
+            .where(SuspectDossier.master_suspect_id.in_(master_ids))
+            .group_by(SuspectDossier.master_suspect_id)
+            .subquery("latest_dossier_per_master")
+        )
+        dossier_stmt = (
+            select(SuspectMaster, Suspect, SuspectDossier, Office)
+            .join(SuspectDossier, SuspectDossier.master_suspect_id == SuspectMaster.id)
+            .join(
+                latest_sq,
+                and_(
+                    SuspectDossier.master_suspect_id == latest_sq.c.master_id,
+                    SuspectDossier.submitted_at == latest_sq.c.max_submitted,
+                ),
+            )
+            .join(Suspect, Suspect.id == SuspectDossier.suspect_id)
+            .outerjoin(Office, Office.id == SuspectDossier.office_id)
+            .options(selectinload(Suspect.photos))
+            .where(SuspectMaster.id.in_(master_ids))
+        )
+        hits: dict[str, dict] = {}
+        dossier_rows = (await self.session.execute(dossier_stmt)).all()
+        for master, suspect, dossier, office in dossier_rows:
+            hits[str(master.id)] = self._profile_hit_dict(
+                master=master,
+                suspect=suspect,
+                dossier=dossier,
+                office_name=office.office_name if office else None,
+                profile_kind="dossier",
+            )
+
+        missing = [mid for mid in master_ids if str(mid) not in hits]
+        if not missing:
+            return hits
+
+        stub_stmt = (
+            select(SuspectMaster, Suspect, Office)
+            .join(
+                SuspectAssociate,
+                SuspectAssociate.linked_master_suspect_id == SuspectMaster.id,
+            )
+            .join(Suspect, Suspect.id == SuspectAssociate.linked_suspect_id)
+            .outerjoin(SuspectDossier, SuspectDossier.master_suspect_id == SuspectMaster.id)
+            .outerjoin(Office, Office.id == Suspect.office_id)
+            .options(selectinload(Suspect.photos))
+            .where(SuspectMaster.id.in_(missing))
+            .where(SuspectDossier.id.is_(None))
+        )
+        stub_rows = (await self.session.execute(stub_stmt)).all()
+        seen_stub: set[uuid.UUID] = set()
+        for master, suspect, office in stub_rows:
+            if master.id in seen_stub:
+                continue
+            seen_stub.add(master.id)
+            hits[str(master.id)] = self._profile_hit_dict(
+                master=master,
+                suspect=suspect,
+                dossier=None,
+                office_name=office.office_name if office else None,
+                profile_kind="stub",
+            )
+        return hits
+
+    async def _profile_hit_for_dossier_id(self, dossier_id: uuid.UUID) -> dict | None:
         stmt = (
-            select(SuspectMaster, Suspect, SuspectDossier)
+            select(SuspectMaster, Suspect, SuspectDossier, Office)
             .join(SuspectDossier, SuspectDossier.master_suspect_id == SuspectMaster.id)
             .join(Suspect, Suspect.id == SuspectDossier.suspect_id)
+            .outerjoin(Office, Office.id == SuspectDossier.office_id)
             .options(selectinload(Suspect.photos))
-            .where(*filters)
-            .order_by(SuspectDossier.submitted_at.desc())
-            .limit(fetch_cap)
+            .where(SuspectDossier.id == dossier_id)
         )
-        rows = (await self.session.execute(stmt)).all()
-        seen: set[uuid.UUID] = set()
-        deduped: list[dict] = []
-        for master, suspect, dossier in rows:
-            if master.id in seen:
-                continue
-            seen.add(master.id)
-            front = next(
-                (p for p in suspect.photos if p.pose_type == "FRONT" and p.storage_key),
-                None,
-            )
-            if front is None:
-                front = next((p for p in suspect.photos if p.storage_key), None)
-            deduped.append(
-                {
-                    "master_suspect_id": str(master.id),
-                    "display_name": master.display_name,
-                    "criminal_name": suspect.criminal_name,
-                    "alias_name": suspect.alias_name,
-                    "dossier_id": str(dossier.id),
-                    "gender": suspect.gender,
-                    "fathers_name": suspect.fathers_name,
-                    "age": suspect.age,
-                    "photo_id": str(front.photo_id) if front else None,
-                    "dossier_draft_id": (
-                        str(dossier.dossier_draft_id) if dossier.dossier_draft_id else None
-                    ),
-                    "storage_key": front.storage_key if front else None,
-                }
-            )
+        row = (await self.session.execute(stmt)).first()
+        if row is None:
+            return None
+        master, suspect, dossier, office = row
+        return self._profile_hit_dict(
+            master=master,
+            suspect=suspect,
+            dossier=dossier,
+            office_name=office.office_name if office else None,
+            profile_kind="dossier",
+        )
 
-        page = deduped[offset : offset + limit]
-        has_more = len(deduped) > offset + limit
-        return page, has_more
+    async def _profile_hit_for_stub_master_id(self, master_id: uuid.UUID) -> dict | None:
+        stmt = (
+            select(SuspectMaster, Suspect, Office)
+            .join(
+                SuspectAssociate,
+                SuspectAssociate.linked_master_suspect_id == SuspectMaster.id,
+            )
+            .join(Suspect, Suspect.id == SuspectAssociate.linked_suspect_id)
+            .outerjoin(SuspectDossier, SuspectDossier.master_suspect_id == SuspectMaster.id)
+            .outerjoin(Office, Office.id == Suspect.office_id)
+            .options(selectinload(Suspect.photos))
+            .where(SuspectMaster.id == master_id)
+            .where(SuspectDossier.id.is_(None))
+        )
+        row = (await self.session.execute(stmt)).first()
+        if row is None:
+            return None
+        master, suspect, office = row
+        return self._profile_hit_dict(
+            master=master,
+            suspect=suspect,
+            dossier=None,
+            office_name=office.office_name if office else None,
+            profile_kind="stub",
+        )
+
+    async def search_suspect_profiles(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        alias: str | None = None,
+        gender: str | None = None,
+        fathers_name: str | None = None,
+        age: int | None = None,
+        has_photo: bool | None = None,
+        exclude_master_id: uuid.UUID | None = None,
+    ) -> tuple[list[dict], bool]:
+        """Search dossier identities and associate stubs (one row per matching submission)."""
+        needle = query.strip().lower()
+        if len(needle) < 2:
+            return [], False
+
+        name_match = self._profile_search_name_match(needle)
+        detail_filters = self._profile_search_detail_filters(
+            alias=alias,
+            gender=gender,
+            fathers_name=fathers_name,
+            age=age,
+            has_photo=has_photo,
+            exclude_master_id=exclude_master_id,
+        )
+
+        dossier_candidates = (
+            select(
+                cast(SuspectDossier.id, String).label("hit_key"),
+                SuspectDossier.submitted_at.label("sort_key"),
+                literal("dossier").label("hit_kind"),
+            )
+            .join(SuspectMaster, SuspectMaster.id == SuspectDossier.master_suspect_id)
+            .join(Suspect, Suspect.id == SuspectDossier.suspect_id)
+            .where(name_match, *detail_filters)
+        )
+        stub_candidates = (
+            select(
+                cast(SuspectMaster.id, String).label("hit_key"),
+                SuspectMaster.created_at.label("sort_key"),
+                literal("stub").label("hit_kind"),
+            )
+            .join(
+                SuspectAssociate,
+                SuspectAssociate.linked_master_suspect_id == SuspectMaster.id,
+            )
+            .join(Suspect, Suspect.id == SuspectAssociate.linked_suspect_id)
+            .outerjoin(SuspectDossier, SuspectDossier.master_suspect_id == SuspectMaster.id)
+            .where(SuspectDossier.id.is_(None))
+            .where(name_match, *detail_filters)
+            .group_by(SuspectMaster.id, SuspectMaster.created_at)
+        )
+
+        combined = union_all(dossier_candidates, stub_candidates).subquery("profile_hits")
+        page_stmt = (
+            select(combined.c.hit_key, combined.c.hit_kind)
+            .order_by(combined.c.sort_key.desc())
+            .offset(offset)
+            .limit(limit + 1)
+        )
+        rows = (await self.session.execute(page_stmt)).all()
+        has_more = len(rows) > limit
+        page_rows = rows[:limit]
+
+        page: list[dict] = []
+        for hit_key, hit_kind in page_rows:
+            hit_id = uuid.UUID(str(hit_key))
+            if hit_kind == "dossier":
+                hit = await self._profile_hit_for_dossier_id(hit_id)
+            else:
+                hit = await self._profile_hit_for_stub_master_id(hit_id)
+            if hit:
+                page.append(hit)
+        return self._group_search_hits_by_master(page), has_more
+
+    @staticmethod
+    def _group_search_hits_by_master(hits: list[dict]) -> list[dict]:
+        """One row per master; linked/sub-profile names surface as match tags."""
+        grouped: dict[str, dict] = {}
+        order: list[str] = []
+        for hit in hits:
+            mid = str(hit["master_suspect_id"])
+            criminal = (hit.get("criminal_name") or "").strip()
+            display = (hit.get("display_name") or "").strip()
+
+            if mid not in grouped:
+                row = dict(hit)
+                row["match_tags"] = []
+                if criminal and criminal.lower() != display.lower():
+                    row["match_tags"].append(criminal)
+                grouped[mid] = row
+                order.append(mid)
+                continue
+
+            row = grouped[mid]
+            if criminal and criminal.lower() != display.lower() and criminal not in row["match_tags"]:
+                row["match_tags"].append(criminal)
+            alias = (hit.get("alias_name") or "").strip()
+            if alias and alias.lower() != display.lower() and alias not in row["match_tags"]:
+                row["match_tags"].append(alias)
+            if not row.get("storage_key") and hit.get("storage_key"):
+                row["photo_id"] = hit.get("photo_id")
+                row["dossier_draft_id"] = hit.get("dossier_draft_id")
+                row["storage_key"] = hit.get("storage_key")
+
+        return [grouped[mid] for mid in order]
 
     async def _resolve_associate_master(
         self,
@@ -737,19 +1040,6 @@ class SuspectDossierRepository:
                 )
                 row = (await self.session.execute(stmt)).scalar_one_or_none()
                 return master.id, row.id if row else None, master.display_name
-
-        existing = await self.find_master_by_name(clean_name)
-        if existing:
-            stmt = (
-                select(Suspect)
-                .join(SuspectDossier, SuspectDossier.suspect_id == Suspect.id)
-                .where(SuspectDossier.master_suspect_id == existing.id)
-                .order_by(SuspectDossier.submitted_at.desc())
-                .limit(1)
-            )
-            row = (await self.session.execute(stmt)).scalar_one_or_none()
-            if row:
-                return existing.id, row.id, existing.display_name
 
         master = SuspectMaster(display_name=clean_name)
         self.session.add(master)
@@ -881,12 +1171,7 @@ class SuspectDossierRepository:
             key = str(dossier.master_suspect_id)
             if key in profiles:
                 continue
-            front = next(
-                (p for p in suspect.photos if p.pose_type == "FRONT" and p.storage_key),
-                None,
-            )
-            if front is None:
-                front = next((p for p in suspect.photos if p.storage_key), None)
+            front = self._front_photo(suspect)
             profiles[key] = {
                 "criminal_name": suspect.criminal_name,
                 "gender": suspect.gender,
@@ -896,6 +1181,38 @@ class SuspectDossierRepository:
                 ),
                 "storage_key": front.storage_key if front else None,
             }
+
+        missing = [mid for mid in master_ids if str(mid) not in profiles]
+        if missing:
+            stub_stmt = (
+                select(SuspectMaster, Suspect)
+                .join(
+                    SuspectAssociate,
+                    SuspectAssociate.linked_master_suspect_id == SuspectMaster.id,
+                )
+                .join(Suspect, Suspect.id == SuspectAssociate.linked_suspect_id)
+                .outerjoin(SuspectDossier, SuspectDossier.master_suspect_id == SuspectMaster.id)
+                .options(selectinload(Suspect.photos))
+                .where(SuspectMaster.id.in_(missing))
+                .where(SuspectDossier.id.is_(None))
+            )
+            stub_rows = (await self.session.execute(stub_stmt)).all()
+            seen_stub: set[uuid.UUID] = set()
+            for master, suspect in stub_rows:
+                if master.id in seen_stub:
+                    continue
+                seen_stub.add(master.id)
+                key = str(master.id)
+                if key in profiles:
+                    continue
+                front = self._front_photo(suspect)
+                profiles[key] = {
+                    "criminal_name": suspect.criminal_name,
+                    "gender": suspect.gender,
+                    "photo_id": str(front.photo_id) if front else None,
+                    "dossier_draft_id": None,
+                    "storage_key": front.storage_key if front else None,
+                }
         return profiles
 
     async def get_master(self, master_id: uuid.UUID) -> SuspectMaster | None:

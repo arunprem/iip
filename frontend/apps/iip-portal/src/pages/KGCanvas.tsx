@@ -10,6 +10,9 @@ import {
 } from '../utils/kgCanvasSession';
 import { AssociateNetworkGraph } from '../components/knowledge-graph/AssociateNetworkGraph';
 import { buildRelationStats, relationStatKey } from '../components/knowledge-graph/kgGraphStats';
+import { groupProfileHitsByMaster } from '../utils/groupProfileHits';
+import { relationChipColor } from '../components/knowledge-graph/kgRelationColors';
+import { useThemeStore } from '../stores/themeStore';
 import {
   fetchAssociateNetwork,
   searchSuspectProfiles,
@@ -23,6 +26,7 @@ function readInitialSession() {
 
 export default function KGCanvas() {
   const navigate = useNavigate();
+  const themeMode = useThemeStore((s) => s.theme);
   const [query, setQuery] = useState(() => readInitialSession()?.query ?? '');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<SuspectProfileHit[]>(
@@ -36,6 +40,8 @@ export default function KGCanvas() {
   );
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [relationFilters, setRelationFilters] = useState<Set<string>>(new Set());
+  const [hasMoreResults, setHasMoreResults] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const persistSession = useCallback(() => {
     saveKgCanvasSession({ query, results, selected, graph });
@@ -59,16 +65,35 @@ export default function KGCanvas() {
     setGraph(null);
     setRelationFilters(new Set());
     try {
-      const { results: hits } = await searchSuspectProfiles(query.trim(), { limit: 20 });
-      setResults(hits);
+      const { results: hits, has_more } = await searchSuspectProfiles(query.trim(), { limit: 20 });
+      setResults(groupProfileHitsByMaster(hits));
+      setHasMoreResults(has_more);
       if (hits.length === 0) {
         showToast('info', 'No matching suspect profiles found.');
       }
     } catch {
       setResults([]);
+      setHasMoreResults(false);
       showToast('error', 'Could not search profiles. Check that you are signed in.');
     } finally {
       setSearching(false);
+    }
+  };
+
+  const loadMoreResults = async () => {
+    if (query.trim().length < 2 || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const { results: hits, has_more } = await searchSuspectProfiles(query.trim(), {
+        limit: 20,
+        offset: results.length,
+      });
+      setResults((prev) => groupProfileHitsByMaster([...prev, ...hits]));
+      setHasMoreResults(has_more);
+    } catch {
+      showToast('error', 'Could not load more profiles.');
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -155,11 +180,13 @@ export default function KGCanvas() {
           <p className="kg-results-heading">Matching entities ({results.length})</p>
           <ul className="kg-results-list">
             {results.map((hit) => {
-              const active = selected?.master_suspect_id === hit.master_suspect_id;
+              const rowKey = hit.dossier_id ?? hit.master_suspect_id;
+              const selectedKey = selected?.dossier_id ?? selected?.master_suspect_id ?? '';
+              const active = selectedKey === rowKey;
               const meta = formatSuspectProfileMeta(hit);
               return (
                 <li
-                  key={hit.master_suspect_id}
+                  key={hit.dossier_id ?? hit.master_suspect_id}
                   className={`kg-results-row${active ? ' kg-results-row--active' : ''}`}
                 >
                   <div className="kg-results-row__identity">
@@ -171,7 +198,16 @@ export default function KGCanvas() {
                       size="list"
                     />
                     <div className="kg-results-row__text">
-                      <p className="kg-results-name">{hit.criminal_name || hit.display_name}</p>
+                      <p className="kg-results-name">{hit.display_name || hit.criminal_name}</p>
+                      {hit.match_tags && hit.match_tags.length > 0 ? (
+                        <div className="kg-results-tags">
+                          {hit.match_tags.map((tag) => (
+                            <span key={tag} className="kg-results-tag">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                       {meta ? <p className="kg-results-meta">{meta}</p> : null}
                       {!meta && hit.alias_name ? (
                         <p className="kg-results-alias">Alias: {hit.alias_name}</p>
@@ -200,6 +236,18 @@ export default function KGCanvas() {
               );
             })}
           </ul>
+          {hasMoreResults && (
+            <div className="kg-results-more">
+              <button
+                type="button"
+                className="kg-btn-profile"
+                onClick={() => void loadMoreResults()}
+                disabled={loadingMore}
+              >
+                {loadingMore ? 'Loading…' : 'Load more matches'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -245,7 +293,20 @@ export default function KGCanvas() {
                       className={`kg-analysis-chip${stat.linkKind === 'relative' ? ' kg-analysis-chip--muted' : ''}${selected ? ' kg-analysis-chip--active' : ''}${dimmed ? ' kg-analysis-chip--dim' : ''}`}
                       onClick={() => toggleRelationFilter(key)}
                       aria-pressed={selected}
+                      style={
+                        selected
+                          ? {
+                              borderColor: relationChipColor(stat.role, themeMode === 'dark'),
+                              boxShadow: `0 0 0 1px ${relationChipColor(stat.role, themeMode === 'dark')}`,
+                            }
+                          : undefined
+                      }
                     >
+                      <span
+                        className="kg-analysis-chip__dot"
+                        style={{ backgroundColor: relationChipColor(stat.role, themeMode === 'dark') }}
+                        aria-hidden
+                      />
                       {stat.label}
                       <strong>{stat.count}</strong>
                     </button>

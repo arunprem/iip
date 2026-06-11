@@ -234,6 +234,22 @@ class ApiClient {
     });
   }
 
+  /// ML gateway JSON (AFIS identify, etc.).
+  Future<Map<String, dynamic>> postJsonMl(
+    String path,
+    Map<String, dynamic> body, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    return _withAuthRetry(path, () async {
+      final response = await _post(
+        Uri.parse('${AppConfig.mlApiBase}$path'),
+        headers: _headers(jsonBody: true),
+        body: jsonEncode(body),
+      ).timeout(timeout);
+      return _decode(response);
+    });
+  }
+
   /// ML gateway uploads (FRS) — longer timeout for model inference.
   Future<Map<String, dynamic>> uploadMultipartMl(
     String path,

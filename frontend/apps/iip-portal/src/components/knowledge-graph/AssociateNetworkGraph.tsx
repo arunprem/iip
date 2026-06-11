@@ -16,6 +16,8 @@ import {
   spreadNodesInitially,
   type LinkKind,
 } from './kgGraphCanvas';
+import { relationFilterKey } from './kgGraphStats';
+import { resolveLinkVisuals, withAlpha as withRelationAlpha } from './kgRelationColors';
 
 const FIT_PADDING = 140;
 
@@ -58,7 +60,22 @@ function linkNodeId(endpoint: string | ForceNode): string {
 }
 
 function linkFilterKey(link: ForceLink): string {
-  return `${link.linkKind}:${link.role}`;
+  const role = (link.role || 'UNKNOWN').trim();
+  return relationFilterKey(link.linkKind, role);
+}
+
+function withLinkAlpha(color: string, alpha: number): string {
+  const match = color.match(/rgba?\(\s*([^)]+)\s*\)/);
+  if (!match) return color;
+  const parts = match[1].split(',').map((s) => s.trim());
+  if (parts.length >= 4) {
+    const base = Number.parseFloat(parts[3]);
+    return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${base * alpha})`;
+  }
+  if (parts.length === 3) {
+    return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`;
+  }
+  return color;
 }
 
 export function AssociateNetworkGraph({
@@ -114,47 +131,73 @@ export function AssociateNetworkGraph({
     [activeRelationFilters]
   );
 
-  const visibleGraphData = useMemo(() => {
+  const linkAlphasRef = useRef<Record<string, number>>({});
+  const nodeAlphasRef = useRef<Record<string, number>>({});
+  const layoutLockedRef = useRef(false);
+  const filtersActive = relationFilterSet.size > 0;
+
+  /** Layer-only layout — relation filters toggle link visibility without moving nodes. */
+  const layoutGraphData = useMemo(() => {
     const layerOk = (n: ForceNode) => {
       if (n.isCenter) return true;
       if (n.nodeKind === 'relative') return showRelatives;
       return showAssociates;
     };
 
-    let links = fullGraphData.links.filter((l) => {
+    const nodes = fullGraphData.nodes.filter((n) => n.isCenter || layerOk(n));
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const links = fullGraphData.links.filter((l) => {
       const src = linkNodeId(l.source);
       const tgt = linkNodeId(l.target);
-      const srcNode = fullGraphData.nodes.find((n) => n.id === src);
-      const tgtNode = fullGraphData.nodes.find((n) => n.id === tgt);
-      if (!srcNode || !tgtNode) return false;
-      return layerOk(srcNode) && layerOk(tgtNode);
+      return nodeIds.has(src) && nodeIds.has(tgt);
     });
 
-    if (relationFilterSet.size > 0) {
-      links = links.filter((l) => relationFilterSet.has(linkFilterKey(l)));
-    }
+    return { nodes, links };
+  }, [fullGraphData, showAssociates, showRelatives]);
 
-    const connectedIds = new Set<string>();
-    for (const link of links) {
-      connectedIds.add(linkNodeId(link.source));
-      connectedIds.add(linkNodeId(link.target));
-    }
+  const graphData = layoutGraphData;
 
-    const nodesVisible = fullGraphData.nodes.filter((n) => {
-      if (n.isCenter) return true;
-      if (!connectedIds.has(n.id)) return false;
-      return layerOk(n);
-    });
+  const linkPassesRelationFilter = useCallback(
+    (link: ForceLink) =>
+      relationFilterSet.size === 0 || relationFilterSet.has(linkFilterKey(link)),
+    [relationFilterSet]
+  );
 
-    const visibleIds = new Set(nodesVisible.map((n) => n.id));
-    links = links.filter(
-      (l) => visibleIds.has(linkNodeId(l.source)) && visibleIds.has(linkNodeId(l.target))
-    );
+  const getLinkAlpha = useCallback((link: ForceLink) => {
+    const stored = linkAlphasRef.current[link.id];
+    if (stored !== undefined) return stored;
+    return 1;
+  }, []);
 
-    return { nodes: nodesVisible, links };
-  }, [fullGraphData, showAssociates, showRelatives, relationFilterSet]);
+  const getLinkVisuals = useCallback(
+    (link: ForceLink) => {
+      const alpha = getLinkAlpha(link);
+      return resolveLinkVisuals({
+        role: link.role,
+        linkKind: link.linkKind,
+        theme: graphTheme,
+        filtersActive,
+        passesFilter: linkPassesRelationFilter(link),
+        alpha,
+      });
+    },
+    [getLinkAlpha, graphTheme, filtersActive, linkPassesRelationFilter]
+  );
 
-  const graphData = visibleGraphData;
+  const getNodeAlpha = useCallback(
+    (node: ForceNode) => {
+      if (!filtersActive || node.isCenter) return 1;
+      const stored = nodeAlphasRef.current[node.id];
+      if (stored !== undefined) return stored;
+      return 1;
+    },
+    [filtersActive]
+  );
+
+  const visibleLinkCount = useMemo(
+    () => layoutGraphData.links.filter((l) => linkPassesRelationFilter(l)).length,
+    [layoutGraphData.links, linkPassesRelationFilter]
+  );
 
   const highlightIds = useMemo(() => {
     if (!focusActive || !selectedNodeId) return null;
@@ -172,9 +215,8 @@ export function AssociateNetworkGraph({
   const relativeCount = graphData.nodes.filter((n) => n.nodeKind === 'relative').length;
 
   const graphKey = useMemo(
-    () =>
-      `${centerId}:${nodes.length}:${edges.length}:${showAssociates}:${showRelatives}:${activeRelationFilters.join('|')}`,
-    [centerId, nodes.length, edges.length, showAssociates, showRelatives, activeRelationFilters]
+    () => `${centerId}:${nodes.length}:${edges.length}:${showAssociates}:${showRelatives}`,
+    [centerId, nodes.length, edges.length, showAssociates, showRelatives]
   );
 
   const fitGraphToView = useCallback(
@@ -187,12 +229,47 @@ export function AssociateNetworkGraph({
     [graphData.nodes.length]
   );
 
+  const fitFilteredGraphToView = useCallback(
+    (durationMs = 400) => {
+      const fg = fgRef.current;
+      if (!fg || layoutGraphData.nodes.length === 0) return;
+
+      if (!filtersActive) {
+        fitGraphToView(durationMs);
+        return;
+      }
+
+      fg.zoomToFit(durationMs, 72, (node) => {
+        const n = node as ForceNode;
+        if (n.isCenter) return true;
+        return layoutGraphData.links.some((link) => {
+          if (!linkPassesRelationFilter(link)) return false;
+          const src = linkNodeId(link.source);
+          const tgt = linkNodeId(link.target);
+          return src === n.id || tgt === n.id;
+        });
+      });
+    },
+    [
+      layoutGraphData.links,
+      layoutGraphData.nodes,
+      filtersActive,
+      linkPassesRelationFilter,
+      fitGraphToView,
+    ]
+  );
+
+  const filterFitKey = activeRelationFilters.join('|');
+
   const selectedGraphNode = selectedNodeId ? nodesById.get(selectedNodeId) ?? null : null;
 
   useEffect(() => {
     setImages({});
     loadedPhotoIds.current = new Set();
     fittedGraphKey.current = null;
+    layoutLockedRef.current = false;
+    linkAlphasRef.current = {};
+    nodeAlphasRef.current = {};
     setSelectedNodeId(null);
     setFocusActive(false);
   }, [centerId]);
@@ -245,12 +322,79 @@ export function AssociateNetworkGraph({
         .iterations(4)
     );
 
-    fittedGraphKey.current = null;
-    fg.d3ReheatSimulation();
+    if (!layoutLockedRef.current) {
+      fittedGraphKey.current = null;
+      fg.d3ReheatSimulation();
+    }
   }, [graphData]);
 
   useEffect(() => {
-    if (graphData.nodes.length === 0) return;
+    for (const link of layoutGraphData.links) {
+      if (linkAlphasRef.current[link.id] === undefined) {
+        linkAlphasRef.current[link.id] = 1;
+      }
+    }
+    for (const node of layoutGraphData.nodes) {
+      if (nodeAlphasRef.current[node.id] === undefined) {
+        nodeAlphasRef.current[node.id] = 1;
+      }
+    }
+  }, [layoutGraphData.links, layoutGraphData.nodes]);
+
+  useEffect(() => {
+    if (layoutGraphData.links.length === 0) return;
+    let frame = 0;
+    const step = () => {
+      let moving = false;
+      for (const link of layoutGraphData.links) {
+        const target = linkPassesRelationFilter(link) ? 1 : 0;
+        const current = linkAlphasRef.current[link.id] ?? 1;
+        if (Math.abs(current - target) < 0.02) {
+          linkAlphasRef.current[link.id] = target;
+          continue;
+        }
+        linkAlphasRef.current[link.id] = current + (target - current) * 0.18;
+        moving = true;
+      }
+
+      for (const node of layoutGraphData.nodes) {
+        if (!filtersActive || node.isCenter) {
+          nodeAlphasRef.current[node.id] = 1;
+          continue;
+        }
+        const connected = layoutGraphData.links.some((link) => {
+          const src = linkNodeId(link.source);
+          const tgt = linkNodeId(link.target);
+          if (src !== node.id && tgt !== node.id) return false;
+          return (linkAlphasRef.current[link.id] ?? 1) > 0.25;
+        });
+        const target = connected ? 1 : 0.16;
+        const current = nodeAlphasRef.current[node.id] ?? 1;
+        if (Math.abs(current - target) < 0.02) {
+          nodeAlphasRef.current[node.id] = target;
+          continue;
+        }
+        nodeAlphasRef.current[node.id] = current + (target - current) * 0.18;
+        moving = true;
+      }
+
+      fgRef.current?.refresh();
+      bump((n) => n + 1);
+      if (moving) frame = window.requestAnimationFrame(step);
+    };
+    frame = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(frame);
+  }, [layoutGraphData.links, layoutGraphData.nodes, linkPassesRelationFilter, filtersActive]);
+
+  useEffect(() => {
+    const fg = fgRef.current;
+    if (!fg || layoutGraphData.nodes.length === 0) return;
+    const timer = window.setTimeout(() => fitFilteredGraphToView(450), 460);
+    return () => window.clearTimeout(timer);
+  }, [filterFitKey, layoutGraphData.nodes.length, fitFilteredGraphToView]);
+
+  useEffect(() => {
+    if (graphData.nodes.length === 0 || layoutLockedRef.current) return;
     const timer = window.setTimeout(() => fitGraphToView(200), 250);
     return () => window.clearTimeout(timer);
   }, [dimensions.width, dimensions.height, graphData.nodes.length, fitGraphToView]);
@@ -312,14 +456,23 @@ export function AssociateNetworkGraph({
   );
 
   const handleEngineStop = useCallback(() => {
-    if (fittedGraphKey.current !== graphKey) {
-      fitGraphToView(0);
-      fittedGraphKey.current = graphKey;
+    if (!layoutLockedRef.current) {
+      for (const node of graphData.nodes) {
+        if (node.x != null && node.y != null) {
+          node.fx = node.x;
+          node.fy = node.y;
+        }
+      }
+      layoutLockedRef.current = true;
+      if (fittedGraphKey.current !== graphKey) {
+        fitGraphToView(0);
+        fittedGraphKey.current = graphKey;
+      }
     }
     const center = graphData.nodes.find((n) => n.isCenter);
     if (center) {
-      center.fx = undefined;
-      center.fy = undefined;
+      center.fx = center.x;
+      center.fy = center.y;
     }
     bump((n) => n + 1);
   }, [graphData.nodes, graphKey, fitGraphToView]);
@@ -327,9 +480,10 @@ export function AssociateNetworkGraph({
   const paintNode = useCallback(
     (node: object, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const n = node as ForceNode;
-      const dimmed = highlightIds && !highlightIds.has(n.id);
+      const focusDimmed = highlightIds && !highlightIds.has(n.id);
+      const filterAlpha = getNodeAlpha(n);
       ctx.save();
-      if (dimmed) ctx.globalAlpha = 0.22;
+      ctx.globalAlpha = filterAlpha * (focusDimmed ? 0.22 : 1);
       drawNetworkNode(ctx, n, globalScale, images[n.id] ?? null, graphTheme);
       ctx.restore();
       if (selectedNodeId === n.id) {
@@ -346,22 +500,30 @@ export function AssociateNetworkGraph({
         ctx.restore();
       }
     },
-    [images, graphTheme, highlightIds, selectedNodeId]
+    [images, graphTheme, highlightIds, selectedNodeId, getNodeAlpha]
   );
 
   const paintLink = useCallback(
     (link: object, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const l = link as ForceLink;
+      const alpha = getLinkAlpha(l);
+      if (alpha < 0.03) return;
       const src = l.source as ForceNode;
       const tgt = l.target as ForceNode;
       if (src.x == null || tgt.x == null || src.y == null || tgt.y == null) return;
-      const dimmed =
+      const focusDimmed =
         highlightIds &&
         (!highlightIds.has(src.id) || !highlightIds.has(tgt.id));
+      const visuals = getLinkVisuals(l);
+      const boosted = filtersActive && alpha > 0.65;
       ctx.save();
-      if (dimmed) ctx.globalAlpha = 0.15;
+      ctx.globalAlpha = alpha * (focusDimmed ? 0.15 : 1);
       const mx = (src.x + tgt.x) / 2;
       const my = (src.y + tgt.y) / 2;
+      if (boosted) {
+        ctx.shadowColor = visuals.glow;
+        ctx.shadowBlur = 14 / globalScale;
+      }
       drawLinkLabel(
         ctx,
         mx,
@@ -369,11 +531,18 @@ export function AssociateNetworkGraph({
         formatRelationRole(l.role),
         globalScale,
         graphTheme,
-        l.linkKind
+        l.linkKind,
+        filtersActive && linkPassesRelationFilter(l)
+          ? {
+              labelBg: visuals.labelBg,
+              labelBorder: visuals.labelBorder,
+              labelText: visuals.label,
+            }
+          : undefined
       );
       ctx.restore();
     },
-    [graphTheme, highlightIds]
+    [graphTheme, highlightIds, getLinkAlpha, getLinkVisuals, filtersActive, linkPassesRelationFilter]
   );
 
   if (graphData.nodes.length === 0) {
@@ -422,7 +591,7 @@ export function AssociateNetworkGraph({
           <Focus size={14} />
           {focusActive ? 'Clear focus' : 'Focus'}
         </button>
-        <button type="button" className="kg-graph-tool-btn" onClick={() => fitGraphToView(400)}>
+        <button type="button" className="kg-graph-tool-btn" onClick={() => fitFilteredGraphToView(400)}>
           <Maximize2 size={14} />
           Fit view
         </button>
@@ -437,7 +606,7 @@ export function AssociateNetworkGraph({
         {relativeCount > 0 && (
           <span className="kg-graph-hud__stat kg-graph-hud__stat--muted">{relativeCount} relatives</span>
         )}
-        <span className="kg-graph-hud__stat">{graphData.links.length} relations</span>
+        <span className="kg-graph-hud__stat">{visibleLinkCount} relations</span>
       </div>
 
       <ForceGraph2D
@@ -463,39 +632,52 @@ export function AssociateNetworkGraph({
           );
           return lines.join(' · ');
         }}
-        linkLabel={(l) => formatRelationRole((l as ForceLink).role)}
+        linkVisibility={(l) => getLinkAlpha(l as ForceLink) > 0.03}
+        linkLabel={(l) =>
+          getLinkAlpha(l as ForceLink) > 0.35
+            ? formatRelationRole((l as ForceLink).role)
+            : ''
+        }
         linkWidth={(l) => {
           const link = l as ForceLink;
+          const alpha = getLinkAlpha(link);
           const hl =
             highlightIds &&
             highlightIds.has(linkNodeId(link.source)) &&
             highlightIds.has(linkNodeId(link.target));
-          const base = link.linkKind === 'relative' ? 1.2 : 1.8;
-          return hl ? base + 1.2 : base;
+          const boosted = filtersActive && alpha > 0.65;
+          const base = link.linkKind === 'relative' ? 1.4 : 2.4;
+          return (hl ? base + 1.4 : base) * alpha * (boosted ? 1.5 : 1);
         }}
         linkColor={(l) => {
           const link = l as ForceLink;
+          const alpha = getLinkAlpha(link);
+          const visuals = getLinkVisuals(link);
           const hl =
             highlightIds &&
             highlightIds.has(linkNodeId(link.source)) &&
             highlightIds.has(linkNodeId(link.target));
-          if (hl) {
+          if (hl && !filtersActive) {
             return link.linkKind === 'relative'
-              ? 'rgba(148, 163, 184, 0.75)'
-              : 'rgba(34, 211, 238, 0.85)';
+              ? `rgba(148, 163, 184, ${0.75 * alpha})`
+              : `rgba(34, 211, 238, ${0.85 * alpha})`;
           }
-          return link.linkKind === 'relative'
-            ? graphTheme.relativeLinkColor
-            : graphTheme.linkColor;
+          return withRelationAlpha(visuals.line, alpha);
         }}
         linkLineDash={(l) => ((l as ForceLink).linkKind === 'relative' ? [5, 5] : null)}
-        linkDirectionalArrowLength={(l) => ((l as ForceLink).linkKind === 'relative' ? 5 : 7)}
+        linkDirectionalArrowLength={(l) => {
+          const link = l as ForceLink;
+          const alpha = getLinkAlpha(link);
+          const boosted = filtersActive && alpha > 0.65;
+          return (link.linkKind === 'relative' ? 5 : 8) * alpha * (boosted ? 1.35 : 1);
+        }}
         linkDirectionalArrowRelPos={0.92}
-        linkDirectionalArrowColor={(l) =>
-          (l as ForceLink).linkKind === 'relative'
-            ? graphTheme.relativeLinkArrow
-            : graphTheme.linkArrow
-        }
+        linkDirectionalArrowColor={(l) => {
+          const link = l as ForceLink;
+          const alpha = getLinkAlpha(link);
+          const visuals = getLinkVisuals(link);
+          return withRelationAlpha(visuals.arrow, alpha);
+        }}
         linkCurvature={0.12}
         warmupTicks={90}
         cooldownTicks={220}

@@ -2,47 +2,90 @@ import 'package:flutter/material.dart';
 import 'package:graphview/graphview.dart';
 
 import '../../models/knowledge_graph_models.dart';
+import 'kg_edge_render_state.dart';
 import 'kg_graph_theme.dart';
+import 'kg_relation_colors.dart';
 
-/// Canvas edge renderer with relation labels (extends graphview ArrowEdgeRenderer).
+/// Canvas edge renderer with relation labels and animated filter fade.
 class KgRelationEdgeRenderer extends ArrowEdgeRenderer {
   KgRelationEdgeRenderer({
     required this.theme,
     required this.edgeById,
-    required this.focusNodeId,
+    required this.nodeById,
+    required this.renderState,
     super.noArrow = false,
   });
 
   final KgGraphTheme theme;
   final Map<String, GraphEdge> edgeById;
-  final String? focusNodeId;
+  final Map<String, GraphNode> nodeById;
+  final KgEdgeRenderState renderState;
 
   @override
   void renderEdge(Canvas canvas, Edge edge, Paint paint) {
     final meta = _meta(edge);
-    final isRelative = meta?.linkKind == GraphLinkKind.relative;
+    if (meta == null) return;
+
+    final src = nodeById[meta.source];
+    final tgt = nodeById[meta.target];
+    final alpha = renderState.alphaFor(meta.id, meta, src, tgt);
+    if (alpha < 0.02) return;
+
+    final isRelative = meta.linkKind == GraphLinkKind.relative;
+    final passes = renderState.relationAllows(meta);
+    final visuals = resolveLinkVisuals(
+      role: meta.role,
+      isRelative: isRelative,
+      theme: theme,
+      filtersActive: renderState.filtersActive(),
+      passesFilter: passes,
+      alpha: alpha,
+    );
     final dimmed = _isDimmed(edge);
+    final boosted = renderState.filtersActive() && passes && alpha > 0.65;
+    final strokeW = (isRelative ? 1.4 : 2.2) * alpha * (boosted ? 1.55 : 1);
+
+    if (boosted && alpha > 0.5) {
+      final glow = Paint()
+        ..color = visuals.glow.withValues(alpha: 0.45 * alpha)
+        ..strokeWidth = strokeW + 6
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      _drawLine(canvas, edge, glow);
+    }
 
     final stroke = Paint()
-      ..color = (isRelative == true ? theme.relativeLinkColor : theme.linkColor)
-          .withValues(alpha: dimmed ? 0.2 : 1)
-      ..strokeWidth = isRelative == true ? 1.2 : 1.8
+      ..color = visuals.line.withValues(alpha: alpha * (dimmed ? 0.18 : 0.95))
+      ..strokeWidth = strokeW
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    if (isRelative == true) {
+    if (isRelative) {
       edge.destination.lineType = LineType.DashedLine;
     }
 
     super.renderEdge(canvas, edge, stroke);
 
-    if (dimmed || meta == null) return;
+    if (dimmed || alpha < 0.4) return;
 
+    final srcCenter = getNodeCenter(edge.source);
+    final dstCenter = getNodeCenter(edge.destination);
+    final mid = Offset((srcCenter.dx + dstCenter.dx) / 2, (srcCenter.dy + dstCenter.dy) / 2);
+    _drawLabel(
+      canvas,
+      mid,
+      formatRelationRole(meta.role),
+      alpha,
+      boosted,
+      visuals,
+    );
+  }
+
+  void _drawLine(Canvas canvas, Edge edge, Paint paint) {
     final src = getNodeCenter(edge.source);
     final dst = getNodeCenter(edge.destination);
-    final mid = Offset((src.dx + dst.dx) / 2, (src.dy + dst.dy) / 2);
-    final label = formatRelationRole(meta.role);
-    _drawLabel(canvas, mid, label, isRelative == true);
+    canvas.drawLine(src, dst, paint);
   }
 
   GraphEdge? _meta(Edge edge) {
@@ -56,38 +99,55 @@ class KgRelationEdgeRenderer extends ArrowEdgeRenderer {
   String _nodeId(Node node) => (node.key as ValueKey).value as String;
 
   bool _isDimmed(Edge edge) {
-    final focus = focusNodeId;
+    final focus = renderState.focusNodeId;
     if (focus == null) return false;
     return _nodeId(edge.source) != focus && _nodeId(edge.destination) != focus;
   }
 
-  void _drawLabel(Canvas canvas, Offset pos, String text, bool isRelative) {
+  void _drawLabel(
+    Canvas canvas,
+    Offset pos,
+    String text,
+    double alpha,
+    bool boosted,
+    RelationLinkStyle visuals,
+  ) {
     final style = TextStyle(
-      fontSize: isRelative ? 8 : 9,
-      fontWeight: isRelative ? FontWeight.w600 : FontWeight.w700,
-      color: isRelative ? theme.relativeLinkLabelText : theme.linkLabelText,
+      fontSize: boosted ? 10 : 9,
+      fontWeight: boosted ? FontWeight.w800 : FontWeight.w700,
+      color: visuals.label.withValues(alpha: alpha),
       fontFamily: 'monospace',
     );
     final tp = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
       maxLines: 1,
-    )..layout(maxWidth: 110);
+    )..layout(maxWidth: 120);
 
-    const pad = 5.0;
-    const h = 13.0;
+    const pad = 6.0;
+    const h = 15.0;
     final rect = Rect.fromCenter(center: pos, width: tp.width + pad * 2, height: h);
-    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(3));
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+
+    if (boosted) {
+      canvas.drawRRect(
+        rrect,
+        Paint()
+          ..color = visuals.glow.withValues(alpha: 0.3 * alpha)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+      );
+    }
+
     canvas.drawRRect(
       rrect,
-      Paint()..color = isRelative ? theme.relativeLinkLabelBg : theme.linkLabelBg,
+      Paint()..color = visuals.labelBg.withValues(alpha: alpha),
     );
     canvas.drawRRect(
       rrect,
       Paint()
-        ..color = isRelative ? theme.relativeLinkLabelBorder : theme.linkLabelBorder
+        ..color = visuals.labelBorder.withValues(alpha: alpha * (boosted ? 1 : 0.85))
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
+        ..strokeWidth = boosted ? 1.4 : 1,
     );
     tp.paint(canvas, Offset(rect.left + pad, rect.top + (h - tp.height) / 2));
   }

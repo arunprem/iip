@@ -1328,6 +1328,42 @@
     @apply text-[10px] text-iip-text-muted mt-1 leading-tight;
   }
 
+  .dossier-fingerprint-step {
+    @apply space-y-4;
+  }
+
+  .dossier-fingerprint-bridge-banner code {
+    @apply rounded bg-black/5 dark:bg-white/10 px-1 py-0.5 font-mono text-[11px];
+  }
+
+  .dossier-fingerprint-grid {
+    @apply grid gap-4 sm:grid-cols-2;
+  }
+
+  .dossier-fingerprint-slot {
+    @apply rounded-xl border border-iip-border bg-iip-surface/60 p-4 space-y-3;
+  }
+
+  .dossier-fingerprint-slot__header {
+    @apply flex items-start gap-2.5;
+  }
+
+  .dossier-fingerprint-slot__label {
+    @apply text-sm font-semibold text-iip-text;
+  }
+
+  .dossier-fingerprint-slot__status {
+    @apply min-h-[1.25rem];
+  }
+
+  .dossier-fingerprint-slot__actions {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .dossier-fingerprint-dup-alert {
+    @apply rounded-lg border border-amber-300/60 bg-amber-50/80 dark:bg-amber-950/30 dark:border-amber-700/50 p-3;
+  }
+
   .dossier-duplicate-thumb {
     @apply shrink-0 w-12 h-14 rounded-md overflow-hidden border border-iip-border bg-iip-bg/60;
   }
@@ -1990,6 +2026,10 @@
     @apply divide-y divide-iip-border rounded-xl border border-iip-border bg-iip-surface overflow-hidden;
   }
 
+  .kg-results-more {
+    @apply flex justify-center mt-3;
+  }
+
   .kg-results-row {
     @apply flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 transition;
   }
@@ -2000,6 +2040,14 @@
 
   .kg-results-row__text {
     @apply min-w-0 flex-1;
+  }
+
+  .kg-results-tags {
+    @apply mt-1 flex flex-wrap gap-1.5;
+  }
+
+  .kg-results-tag {
+    @apply inline-flex rounded-full border border-iip-primary/30 bg-iip-primary/10 px-2 py-0.5 text-[11px] font-semibold text-iip-primary;
   }
 
   .kg-results-meta {
@@ -2179,6 +2227,10 @@
 
   .kg-analysis-summary__chips {
     @apply flex flex-wrap gap-2;
+  }
+
+  .kg-analysis-chip__dot {
+    @apply inline-block h-2 w-2 shrink-0 rounded-full;
   }
 
   .kg-analysis-chip {

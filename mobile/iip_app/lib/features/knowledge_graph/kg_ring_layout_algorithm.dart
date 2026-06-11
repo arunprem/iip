@@ -28,13 +28,14 @@ class KgRingLayoutAlgorithm implements Algorithm {
     _resolveOverlaps(graph, pinnedId: centerNodeId);
 
     final bounds = graph.calculateGraphBounds();
-    final dx = shiftX - bounds.center.dx;
-    final dy = shiftY - bounds.center.dy;
+    const layoutPad = 12.0;
+    final dx = shiftX - bounds.left + layoutPad;
+    final dy = shiftY - bounds.top + layoutPad;
     for (final node in graph.nodes) {
       node.position = Offset(node.position.dx + dx, node.position.dy + dy);
     }
 
-    return graph.calculateGraphSize();
+    return Size(bounds.width + layoutPad * 2, bounds.height + layoutPad * 2);
   }
 
   void _resolveOverlaps(Graph graph, {required String? pinnedId}) {

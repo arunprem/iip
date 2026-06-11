@@ -279,15 +279,17 @@ export function drawLinkLabel(
   text: string,
   globalScale: number,
   theme: KgGraphTheme,
-  linkKind: LinkKind = 'associate'
+  linkKind: LinkKind = 'associate',
+  overrides?: { labelBg?: string; labelBorder?: string; labelText?: string }
 ): void {
   const isRelative = linkKind === 'relative';
   ctx.font = `${isRelative ? 600 : 700} ${(isRelative ? 8 : 9) / globalScale}px "JetBrains Mono", monospace`;
   const w = ctx.measureText(text).width;
   const pad = 6 / globalScale;
   const h = 14 / globalScale;
-  ctx.fillStyle = isRelative ? theme.relativeLinkLabelBg : theme.linkLabelBg;
-  ctx.strokeStyle = isRelative ? theme.relativeLinkLabelBorder : theme.linkLabelBorder;
+  ctx.fillStyle = overrides?.labelBg ?? (isRelative ? theme.relativeLinkLabelBg : theme.linkLabelBg);
+  ctx.strokeStyle =
+    overrides?.labelBorder ?? (isRelative ? theme.relativeLinkLabelBorder : theme.linkLabelBorder);
   ctx.lineWidth = 1 / globalScale;
   const rx = mx - w / 2 - pad;
   const ry = my - h / 2;
@@ -295,7 +297,7 @@ export function drawLinkLabel(
   ctx.roundRect(rx, ry, w + pad * 2, h, 3 / globalScale);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = isRelative ? theme.relativeLinkLabelText : theme.linkLabelText;
+  ctx.fillStyle = overrides?.labelText ?? (isRelative ? theme.relativeLinkLabelText : theme.linkLabelText);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, mx, my);

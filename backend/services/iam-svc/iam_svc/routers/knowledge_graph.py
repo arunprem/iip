@@ -28,13 +28,17 @@ class SuspectProfileHit(BaseModel):
     display_name: str
     criminal_name: str
     alias_name: str | None = None
-    dossier_id: str
+    dossier_id: str | None = None
     gender: str | None = None
     fathers_name: str | None = None
     age: int | None = None
     photo_id: str | None = None
     dossier_draft_id: str | None = None
     storage_key: str | None = None
+    office_name: str | None = None
+    profile_kind: str = "dossier"
+    link_status: str | None = None
+    match_tags: list[str] = Field(default_factory=list)
 
 
 class SuspectSearchResponse(BaseModel):

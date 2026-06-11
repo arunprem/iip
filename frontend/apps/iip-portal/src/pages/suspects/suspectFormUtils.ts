@@ -1,5 +1,10 @@
 import { emptyAddress, emptyDossierDraft, emptyPresentAddress } from './suspectFormDefaults';
-import type { SuspectAddress, SuspectDossierDraft, SuspectPhotoSlot } from './suspectTypes';
+import type {
+  SuspectAddress,
+  SuspectDossierDraft,
+  SuspectFingerprintSlot,
+  SuspectPhotoSlot,
+} from './suspectTypes';
 
 export { newRowId } from './suspectRowIds';
 
@@ -27,6 +32,7 @@ export function normalizeDossierDraft(
       : emptyPresentAddress(),
     hasDifferentPresentAddress: parsed.hasDifferentPresentAddress ?? false,
     associates: parsed.associates ?? [],
+    fingerprints: parsed.fingerprints ?? base.fingerprints,
     linkDecision: parsed.linkDecision ?? null,
   };
 
@@ -49,6 +55,52 @@ export function updatePhotoSlot(
   patch: Partial<SuspectPhotoSlot>
 ): SuspectPhotoSlot[] {
   return photos.map((p) => (p.id === slotId ? { ...p, ...patch } : p));
+}
+
+export function updateFingerprintSlot(
+  fingerprints: SuspectFingerprintSlot[],
+  slotId: string,
+  patch: Partial<SuspectFingerprintSlot>
+): SuspectFingerprintSlot[] {
+  return fingerprints.map((f) => (f.id === slotId ? { ...f, ...patch } : f));
+}
+
+function isRequiredFingerprintCaptured(draft: SuspectDossierDraft): boolean {
+  const required = draft.fingerprints.filter((f) => f.required);
+  if (required.length === 0) return true;
+  return required.every(
+    (f) => f.status === 'validated' || (f.status === 'duplicate' && f.templateDataB64)
+  );
+}
+
+function isFingerprintDuplicateResolved(
+  draft: SuspectDossierDraft,
+  slot: SuspectFingerprintSlot
+): boolean {
+  if (slot.duplicateMatches.length === 0) return true;
+  return slot.duplicateAcknowledged;
+}
+
+export function fingerprintsStepBlockedReason(draft: SuspectDossierDraft): string | null {
+  const capturing = draft.fingerprints.some((f) => f.status === 'capturing');
+  if (capturing) return 'Wait for fingerprint capture to finish.';
+  if (!isRequiredFingerprintCaptured(draft)) {
+    return 'Capture the required right thumb print before continuing.';
+  }
+  const unresolved = draft.fingerprints.find(
+    (f) =>
+      f.duplicateMatches.length > 0 &&
+      !isFingerprintDuplicateResolved(draft, f) &&
+      (f.status === 'duplicate' || f.status === 'validated')
+  );
+  if (unresolved) {
+    return 'Acknowledge the fingerprint duplicate alert before continuing.';
+  }
+  return null;
+}
+
+export function hasValidatedRequiredFingerprint(draft: SuspectDossierDraft): boolean {
+  return isRequiredFingerprintCaptured(draft);
 }
 
 export function syncAgeFromDob(dateOfBirth: string): Pick<SuspectDossierDraft, 'age' | 'yearOfBirth'> {
@@ -117,8 +169,11 @@ export function stepCompletion(draft: SuspectDossierDraft): Record<string, boole
   const hasRelatives = draft.relatives.some((r) => r.name.trim());
   const hasAssociates = (draft.associates ?? []).some((a) => a.name.trim());
 
+  const hasFingerprint = hasValidatedRequiredFingerprint(draft);
+
   return {
     photo: hasPhoto,
+    fingerprint: hasFingerprint,
     identity: hasIdentity,
     address: hasAddress,
     contacts: hasContacts,

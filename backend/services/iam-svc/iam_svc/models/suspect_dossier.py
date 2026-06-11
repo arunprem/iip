@@ -82,6 +82,9 @@ class Suspect(Base):
     photos: Mapped[list["SuspectPhoto"]] = relationship(
         "SuspectPhoto", back_populates="suspect", lazy="selectin"
     )
+    fingerprints: Mapped[list["SuspectFingerprint"]] = relationship(
+        "SuspectFingerprint", back_populates="suspect", lazy="selectin"
+    )
 
 
 class SuspectDossier(Base):
@@ -126,6 +129,9 @@ class SuspectDossier(Base):
     )
     photos: Mapped[list["SuspectPhoto"]] = relationship(
         "SuspectPhoto", back_populates="dossier", lazy="selectin"
+    )
+    fingerprints: Mapped[list["SuspectFingerprint"]] = relationship(
+        "SuspectFingerprint", back_populates="dossier", lazy="selectin"
     )
     associates: Mapped[list["SuspectAssociate"]] = relationship(
         "SuspectAssociate", back_populates="dossier", lazy="selectin"
@@ -278,6 +284,38 @@ class SuspectPhoto(Base):
     suspect: Mapped["Suspect"] = relationship("Suspect", back_populates="photos", lazy="selectin")
     dossier: Mapped["SuspectDossier"] = relationship(
         "SuspectDossier", back_populates="photos", lazy="selectin"
+    )
+
+
+class SuspectFingerprint(Base):
+    __tablename__ = "suspect_fingerprints"
+    __table_args__ = {"schema": "intelligence"}
+
+    suspect_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    dossier_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspect_dossiers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    template_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    print_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    finger_position: Mapped[str] = mapped_column(String(30), nullable=False)
+    template_format: Mapped[str] = mapped_column(String(30), default="ISO19794-2", nullable=False)
+    template_data: Mapped[bytes] = mapped_column(nullable=False)
+    template_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    quality_score: Mapped[float | None] = mapped_column(nullable=True)
+    device_model: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    suspect: Mapped["Suspect"] = relationship(
+        "Suspect", back_populates="fingerprints", lazy="selectin"
+    )
+    dossier: Mapped["SuspectDossier"] = relationship(
+        "SuspectDossier", back_populates="fingerprints", lazy="selectin"
     )
 
 

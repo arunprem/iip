@@ -28,4 +28,10 @@ class AppConfig {
     }
     return '$root:8020/api/v1/ml';
   }
+
+  /// Local SecuGen / FDx capture bridge on the enrollment workstation.
+  static const String fingerprintBridgeUrl = String.fromEnvironment(
+    'FINGERPRINT_BRIDGE_URL',
+    defaultValue: 'http://127.0.0.1:17890',
+  );
 }

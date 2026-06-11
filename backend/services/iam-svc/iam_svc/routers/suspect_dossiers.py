@@ -112,6 +112,19 @@ class SuspectPhotoInput(BaseModel):
     status: str = "empty"
 
 
+class SuspectFingerprintInput(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    finger_position: str = Field(alias="fingerPosition")
+    template_format: str = Field(default="ISO19794-2", alias="templateFormat")
+    template_data_b64: str = Field(alias="templateDataB64")
+    print_id: str | None = Field(None, alias="printId")
+    quality_score: float | None = Field(None, alias="qualityScore")
+    device_model: str | None = Field(None, alias="deviceModel")
+    status: str = "empty"
+
+
 class FaceMatchInput(BaseModel):
     suspect_id: str | None = None
     master_suspect_id: str | None = Field(None, alias="masterSuspectId")
@@ -154,6 +167,7 @@ class UpdateSuspectDossierRequest(BaseModel):
     relatives: list[SuspectRelativeInput] = Field(default_factory=list)
     associates: list[SuspectAssociateInput] = Field(default_factory=list)
     photos: list[SuspectPhotoInput] = Field(default_factory=list)
+    fingerprints: list[SuspectFingerprintInput] = Field(default_factory=list)
 
 
 class CreateSuspectDossierRequest(BaseModel):
@@ -178,6 +192,7 @@ class CreateSuspectDossierRequest(BaseModel):
     relatives: list[SuspectRelativeInput] = Field(default_factory=list)
     associates: list[SuspectAssociateInput] = Field(default_factory=list)
     photos: list[SuspectPhotoInput] = Field(default_factory=list)
+    fingerprints: list[SuspectFingerprintInput] = Field(default_factory=list)
     link_master_id: str | None = Field(None, alias="linkMasterId")
     link_decision: LinkDecisionInput | None = Field(None, alias="linkDecision")
 
@@ -453,7 +468,27 @@ def _update_request_to_repo_payload(body: UpdateSuspectDossierRequest) -> dict[s
             for p in body.photos
             if p.storage_key
         ],
+        "fingerprints": _fingerprints_to_repo(body.fingerprints),
     }
+
+
+def _fingerprints_to_repo(fingerprints: list[SuspectFingerprintInput]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for fp in fingerprints:
+        if not fp.template_data_b64.strip():
+            continue
+        rows.append(
+            {
+                "template_id": uuid.UUID(fp.id),
+                "finger_position": fp.finger_position.upper(),
+                "template_format": (fp.template_format or "ISO19794-2").upper(),
+                "template_data_b64": fp.template_data_b64.strip(),
+                "print_id": uuid.UUID(fp.print_id) if fp.print_id else None,
+                "quality_score": fp.quality_score,
+                "device_model": fp.device_model,
+            }
+        )
+    return rows
 
 
 def _associates_to_repo(associates: list[SuspectAssociateInput]) -> list[dict[str, Any]]:
@@ -530,6 +565,7 @@ def _request_to_repo_payload(body: CreateSuspectDossierRequest) -> dict[str, Any
             for p in body.photos
             if p.storage_key
         ],
+        "fingerprints": _fingerprints_to_repo(body.fingerprints),
     }
 
 

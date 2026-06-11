@@ -4,26 +4,96 @@ class SuspectProfileHit {
     required this.displayName,
     required this.criminalName,
     this.aliasName,
-    required this.dossierId,
+    this.dossierId,
     this.gender,
     this.fathersName,
     this.age,
     this.photoId,
     this.dossierDraftId,
     this.storageKey,
+    this.officeName,
+    this.profileKind,
+    this.linkStatus,
+    this.matchTags = const [],
   });
 
   final String masterSuspectId;
   final String displayName;
   final String criminalName;
   final String? aliasName;
-  final String dossierId;
+  final String? dossierId;
   final String? gender;
   final String? fathersName;
   final int? age;
   final String? photoId;
   final String? dossierDraftId;
   final String? storageKey;
+  final String? officeName;
+  final String? profileKind;
+  final String? linkStatus;
+  final List<String> matchTags;
+
+  SuspectProfileHit mergeWith(SuspectProfileHit other) {
+    if (masterSuspectId != other.masterSuspectId) return this;
+    final tags = <String>[...matchTags];
+    for (final tag in other.matchTags) {
+      if (!tags.contains(tag)) tags.add(tag);
+    }
+    final otherName = other.criminalName.trim();
+    final display = displayName.trim();
+    if (otherName.isNotEmpty &&
+        otherName.toLowerCase() != display.toLowerCase() &&
+        !tags.contains(otherName)) {
+      tags.add(otherName);
+    }
+    final otherAlias = other.aliasName?.trim();
+    if (otherAlias != null &&
+        otherAlias.isNotEmpty &&
+        otherAlias.toLowerCase() != display.toLowerCase() &&
+        !tags.contains(otherAlias)) {
+      tags.add(otherAlias);
+    }
+    return SuspectProfileHit(
+      masterSuspectId: masterSuspectId,
+      displayName: displayName,
+      criminalName: criminalName,
+      aliasName: aliasName,
+      dossierId: dossierId ?? other.dossierId,
+      gender: gender ?? other.gender,
+      fathersName: fathersName ?? other.fathersName,
+      age: age ?? other.age,
+      photoId: photoId ?? other.photoId,
+      dossierDraftId: dossierDraftId ?? other.dossierDraftId,
+      storageKey: storageKey ?? other.storageKey,
+      officeName: officeName ?? other.officeName,
+      profileKind: profileKind ?? other.profileKind,
+      linkStatus: linkStatus ?? other.linkStatus,
+      matchTags: tags,
+    );
+  }
+
+  String get metaLine {
+    final parts = <String>[];
+    if (fathersName != null && fathersName!.isNotEmpty) {
+      parts.add('Father: $fathersName');
+    }
+    if (aliasName != null && aliasName!.isNotEmpty) {
+      parts.add('Alias: $aliasName');
+    }
+    if (gender != null && gender!.isNotEmpty) parts.add(gender!);
+    if (age != null) parts.add('Age $age');
+    if (officeName != null && officeName!.isNotEmpty) parts.add(officeName!);
+    if (linkStatus == 'LINKED') {
+      parts.add('Linked dossier');
+    } else if (linkStatus == 'STANDALONE') {
+      parts.add('Standalone dossier');
+    }
+    if (profileKind == 'stub') parts.add('Profile stub');
+    if (masterSuspectId.length >= 8) {
+      parts.add('Ref ${masterSuspectId.substring(0, 8)}');
+    }
+    return parts.join(' · ');
+  }
 
   factory SuspectProfileHit.fromJson(Map<String, dynamic> json) {
     return SuspectProfileHit(
@@ -32,7 +102,7 @@ class SuspectProfileHit {
       displayName: json['display_name'] as String? ?? '',
       criminalName: json['criminal_name'] as String? ?? '',
       aliasName: json['alias_name'] as String?,
-      dossierId: (json['dossier_id'] ?? json['dossierId']) as String? ?? '',
+      dossierId: (json['dossier_id'] ?? json['dossierId']) as String?,
       gender: json['gender'] as String?,
       fathersName: (json['fathers_name'] ?? json['fathersName']) as String?,
       age: (json['age'] as num?)?.toInt(),
@@ -40,8 +110,30 @@ class SuspectProfileHit {
       dossierDraftId:
           (json['dossier_draft_id'] ?? json['dossierDraftId']) as String?,
       storageKey: (json['storage_key'] ?? json['storageKey']) as String?,
+      officeName: (json['office_name'] ?? json['officeName']) as String?,
+      profileKind: (json['profile_kind'] ?? json['profileKind']) as String?,
+      linkStatus: (json['link_status'] ?? json['linkStatus']) as String?,
+      matchTags: (json['match_tags'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
     );
   }
+}
+
+List<SuspectProfileHit> groupProfileHitsByMaster(Iterable<SuspectProfileHit> hits) {
+  final byMaster = <String, SuspectProfileHit>{};
+  final order = <String>[];
+  for (final hit in hits) {
+    final existing = byMaster[hit.masterSuspectId];
+    if (existing == null) {
+      byMaster[hit.masterSuspectId] = hit;
+      order.add(hit.masterSuspectId);
+    } else {
+      byMaster[hit.masterSuspectId] = existing.mergeWith(hit);
+    }
+  }
+  return order.map((id) => byMaster[id]!).toList();
 }
 
 class SuspectProfileSearchResponse {

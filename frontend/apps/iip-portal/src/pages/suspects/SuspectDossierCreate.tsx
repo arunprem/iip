@@ -16,10 +16,15 @@ import { SuspectWizardStepper } from '../../components/suspects/SuspectWizardSte
 import { SuspectAddressStep } from '../../components/suspects/steps/SuspectAddressStep';
 import { SuspectContactsStep } from '../../components/suspects/steps/SuspectContactsStep';
 import { SuspectIdentityStep } from '../../components/suspects/steps/SuspectIdentityStep';
+import { SuspectFingerprintStep } from '../../components/suspects/steps/SuspectFingerprintStep';
 import { SuspectPhotoStep } from '../../components/suspects/steps/SuspectPhotoStep';
 import { SuspectRelativesStep } from '../../components/suspects/steps/SuspectRelativesStep';
 import { SuspectReviewStep } from '../../components/suspects/steps/SuspectReviewStep';
 import { SuspectSocialStep } from '../../components/suspects/steps/SuspectSocialStep';
+import {
+  discardSuspectDraftFingerprints,
+  indexSubmittedSuspectFingerprint,
+} from '../../api/suspectFingerprints';
 import { discardSuspectDraftPhotos, indexSubmittedSuspectFace } from '../../api/suspectFaces';
 import { createSuspectDossier, scoreSuspectMatches } from '../../api/suspectDossiers';
 import { showToast } from '../../stores/toastStore';
@@ -30,6 +35,7 @@ import {
   emptyDossierDraft,
 } from './suspectFormDefaults';
 import {
+  fingerprintsStepBlockedReason,
   hasValidatedFrontPhoto,
   normalizeDossierDraft,
   photosStepBlockedReason,
@@ -46,8 +52,27 @@ function loadDraft(): SuspectDossierDraft {
     const uuidRe =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!parsed.dossierDraftId || !uuidRe.test(parsed.dossierDraftId) || !Array.isArray(parsed.photos)) {
-      return { ...base, ...parsed, dossierDraftId: base.dossierDraftId, photos: parsed.photos ?? base.photos };
+      return {
+        ...base,
+        ...parsed,
+        dossierDraftId: base.dossierDraftId,
+        photos: parsed.photos ?? base.photos,
+        fingerprints: parsed.fingerprints ?? base.fingerprints,
+      };
     }
+    const fingerprints = Array.isArray(parsed.fingerprints)
+      ? parsed.fingerprints.map((f) => {
+          let slot = uuidRe.test(f.id) ? f : { ...f, id: crypto.randomUUID() };
+          if (slot.status === 'capturing') {
+            slot = {
+              ...slot,
+              status: 'error',
+              errorMessage: 'Previous capture was interrupted. Please scan again.',
+            };
+          }
+          return slot;
+        })
+      : base.fingerprints;
     const photos = parsed.photos.map((p) => {
       let slot = uuidRe.test(p.id) ? p : { ...p, id: crypto.randomUUID() };
       if (
@@ -68,7 +93,7 @@ function loadDraft(): SuspectDossierDraft {
       }
       return slot;
     });
-    return normalizeDossierDraft({ ...parsed, photos });
+    return normalizeDossierDraft({ ...parsed, photos, fingerprints });
   } catch {
     return emptyDossierDraft();
   }
@@ -99,6 +124,9 @@ export default function SuspectDossierCreate() {
         const draftForStorage = {
           ...draft,
           photos: draft.photos.map(({ previewUrl: _preview, ...photo }) => photo),
+          fingerprints: draft.fingerprints.map(({ templateDataB64, ...fp }) =>
+            templateDataB64 ? { ...fp, templateDataB64 } : fp
+          ),
         };
         localStorage.setItem(DOSSIER_DRAFT_STORAGE_KEY, JSON.stringify(draftForStorage));
       } catch {
@@ -118,6 +146,14 @@ export default function SuspectDossierCreate() {
         return;
       }
     }
+    const fingerprintIndex = WIZARD_STEPS.findIndex((s) => s.id === 'fingerprint');
+    if (targetIndex > fingerprintIndex) {
+      const fpBlock = fingerprintsStepBlockedReason(draft);
+      if (fpBlock) {
+        showToast('warning', fpBlock);
+        return;
+      }
+    }
     const identityIndex = WIZARD_STEPS.findIndex((s) => s.id === 'identity');
     if (targetIndex > identityIndex && !draft.criminalName.trim()) {
       showToast('warning', 'Criminal name is required before continuing.');
@@ -132,6 +168,13 @@ export default function SuspectDossierCreate() {
       const block = photosStepBlockedReason(draft);
       if (block) {
         showToast('warning', block);
+        return;
+      }
+    }
+    if (step === 'fingerprint') {
+      const fpBlock = fingerprintsStepBlockedReason(draft);
+      if (fpBlock) {
+        showToast('warning', fpBlock);
         return;
       }
     }
@@ -155,6 +198,7 @@ export default function SuspectDossierCreate() {
   const clearDraft = async () => {
     const draftIdToDiscard = draft.dossierDraftId;
     const hadStoredPhotos = draft.photos.some((p) => p.storageKey);
+    const hadFingerprints = draft.fingerprints.some((f) => f.printId);
     const confirmed = await confirmClearDossierDraft({ hasStoredPhotos: hadStoredPhotos });
     if (!confirmed) return;
 
@@ -162,8 +206,11 @@ export default function SuspectDossierCreate() {
       if (hadStoredPhotos) {
         await discardSuspectDraftPhotos(draftIdToDiscard);
       }
+      if (hadFingerprints) {
+        await discardSuspectDraftFingerprints(draftIdToDiscard);
+      }
     } catch {
-      showToast('warning', 'Local draft cleared, but some photos may remain on the server.');
+      showToast('warning', 'Local draft cleared, but some biometric data may remain on the server.');
     }
     const fresh = emptyDossierDraft();
     setDraft(fresh);
@@ -211,6 +258,30 @@ export default function SuspectDossierCreate() {
         }
       }
 
+      const indexedPrints = draft.fingerprints.filter(
+        (f) =>
+          f.printId &&
+          f.templateDataB64 &&
+          (f.status === 'validated' || f.status === 'duplicate')
+      );
+      for (const fp of indexedPrints) {
+        const fpResult = await indexSubmittedSuspectFingerprint({
+          suspectId: saved.master_suspect_id,
+          dossierDraftId: saved.dossier_draft_id,
+          templateId: fp.id,
+          printId: fp.printId!,
+          fingerPosition: fp.fingerPosition,
+          templateDataB64: fp.templateDataB64!,
+          templateFormat: fp.templateFormat,
+          criminalName: saved.criminal_name,
+          qualityScore: fp.qualityScore ?? undefined,
+          deviceModel: fp.deviceModel ?? undefined,
+        });
+        if (!fpResult.indexed && fpResult.message) {
+          showToast('warning', fpResult.message);
+        }
+      }
+
       localStorage.removeItem(DOSSIER_DRAFT_STORAGE_KEY);
       showToast('success', saved.message);
       navigate('/suspects');
@@ -253,6 +324,22 @@ export default function SuspectDossierCreate() {
             }}
             onLinkDecision={(linkDecision) => patchDraft({ linkDecision })}
             onGeoTagChange={(photoGeoTag) => patchDraft({ photoGeoTag })}
+          />
+        );
+      case 'fingerprint':
+        return (
+          <SuspectFingerprintStep
+            draft={draft}
+            onFingerprintsChange={(fingerprintsOrUpdater) => {
+              setDraft((prev) => ({
+                ...prev,
+                fingerprints:
+                  typeof fingerprintsOrUpdater === 'function'
+                    ? fingerprintsOrUpdater(prev.fingerprints)
+                    : fingerprintsOrUpdater,
+                updatedAt: new Date().toISOString(),
+              }));
+            }}
           />
         );
       case 'identity':

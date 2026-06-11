@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/motion/iip_page_route.dart';
 import '../../core/theme/iip_colors.dart';
 import '../suspects/quick_suspect_gallery_screen.dart';
+import '../afis/afis_search_screen.dart';
 import 'frs_capture_screen.dart';
 import 'frs_live_screen.dart';
 
@@ -72,6 +73,21 @@ Future<void> showFrsModeSheet(BuildContext context, {required IipColors colors})
                   Future.delayed(const Duration(milliseconds: 150), () {
                     if (context.mounted) {
                       context.pushSmooth(const FrsCaptureScreen());
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              _ModeTile(
+                colors: colors,
+                icon: Icons.fingerprint_rounded,
+                title: 'Fingerprint search',
+                subtitle: 'Scan a print via SecuGen bridge and search AFIS',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Future.delayed(const Duration(milliseconds: 150), () {
+                    if (context.mounted) {
+                      context.pushSmooth(const AfisSearchScreen());
                     }
                   });
                 },

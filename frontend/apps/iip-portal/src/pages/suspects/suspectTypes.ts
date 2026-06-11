@@ -93,6 +93,47 @@ export type SuspectPhotoPoseType =
 
 export type SuspectPhotoStatus = 'empty' | 'uploading' | 'validated' | 'error' | 'duplicate';
 
+export type FingerPosition =
+  | 'RIGHT_THUMB'
+  | 'RIGHT_INDEX'
+  | 'RIGHT_MIDDLE'
+  | 'RIGHT_RING'
+  | 'RIGHT_LITTLE'
+  | 'LEFT_THUMB'
+  | 'LEFT_INDEX'
+  | 'LEFT_MIDDLE'
+  | 'LEFT_RING'
+  | 'LEFT_LITTLE';
+
+export type SuspectFingerprintStatus = 'empty' | 'capturing' | 'validated' | 'error' | 'duplicate';
+
+export interface FingerprintDuplicateMatch {
+  print_id: string;
+  template_id: string | null;
+  dossier_draft_id: string | null;
+  suspect_id: string | null;
+  criminal_name: string | null;
+  finger_position: string;
+  similarity_score: number;
+}
+
+export interface SuspectFingerprintSlot {
+  id: string;
+  fingerPosition: FingerPosition;
+  label: string;
+  required: boolean;
+  printId: string | null;
+  templateDataB64: string | null;
+  templateFormat: string;
+  templateHash: string | null;
+  qualityScore: number | null;
+  deviceModel: string | null;
+  status: SuspectFingerprintStatus;
+  errorMessage: string | null;
+  duplicateMatches: FingerprintDuplicateMatch[];
+  duplicateAcknowledged: boolean;
+}
+
 export interface SuspectPhotoSlot {
   id: string;
   poseType: SuspectPhotoPoseType;
@@ -123,6 +164,7 @@ export interface SuspectDossierDraft {
   presentAddress: SuspectAddress;
   hasDifferentPresentAddress: boolean;
   photos: SuspectPhotoSlot[];
+  fingerprints: SuspectFingerprintSlot[];
   criminalName: string;
   aliasName: string;
   gender: string;
@@ -144,6 +186,7 @@ export interface SuspectDossierDraft {
 
 export type WizardStepId =
   | 'photo'
+  | 'fingerprint'
   | 'identity'
   | 'address'
   | 'contacts'

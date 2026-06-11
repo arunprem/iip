@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, Filter, Link2, Loader2, Search, X } from 'lucide-react';
 import { searchSuspectProfiles, type SuspectProfileHit } from '../../api/knowledgeGraph';
+import { groupProfileHitsByMaster } from '../../utils/groupProfileHits';
 import { formatSuspectProfileMeta } from '../../utils/suspectProfileMeta';
 import { GENDER_OPTIONS } from '../../pages/suspects/suspectFormDefaults';
 import { AdminFormField } from '../admin/AdminFormField';
@@ -101,7 +102,11 @@ export function AssociateProfilePicker({
           hasPhoto: applied.hasPhoto || undefined,
           excludeMasterSuspectId,
         });
-        setHits((prev) => (append ? [...prev, ...response.results] : response.results));
+        setHits((prev) =>
+          groupProfileHitsByMaster(
+            append ? [...prev, ...response.results] : response.results
+          )
+        );
         setHasMore(response.has_more);
         setOffset(nextOffset);
         setOpen(true);
@@ -311,13 +316,13 @@ export function AssociateProfilePicker({
         <div id={listId} className="associate-profile-picker__dropdown" role="listbox">
           {hits.map((hit) => (
             <button
-              key={hit.master_suspect_id}
+              key={hit.dossier_id ?? hit.master_suspect_id}
               type="button"
               role="option"
               className="associate-profile-picker__option"
               onClick={() => {
-                onSelect(hit.criminal_name || hit.display_name, hit);
-                setQuery(hit.criminal_name || hit.display_name);
+                onSelect(hit.display_name || hit.criminal_name, hit);
+                setQuery(hit.display_name || hit.criminal_name);
                 setOpen(false);
               }}
             >
@@ -325,13 +330,22 @@ export function AssociateProfilePicker({
                 dossierDraftId={hit.dossier_draft_id}
                 photoId={hit.photo_id}
                 storageKey={hit.storage_key}
-                alt={hit.criminal_name || hit.display_name}
+                alt={hit.display_name || hit.criminal_name}
                 size="list"
               />
               <span className="associate-profile-picker__option-body">
                 <span className="associate-profile-picker__option-name">
-                  {hit.criminal_name || hit.display_name}
+                  {hit.display_name || hit.criminal_name}
                 </span>
+                {hit.match_tags && hit.match_tags.length > 0 ? (
+                  <span className="associate-profile-picker__option-tags">
+                    {hit.match_tags.map((tag) => (
+                      <span key={tag} className="kg-results-tag">
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
                 {formatSuspectProfileMeta(hit) && (
                   <span className="associate-profile-picker__option-meta">
                     {formatSuspectProfileMeta(hit)}

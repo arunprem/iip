@@ -1,6 +1,8 @@
 import type {
+  FingerPosition,
   SuspectAddress,
   SuspectDossierDraft,
+  SuspectFingerprintSlot,
   SuspectPhotoPoseType,
   SuspectPhotoSlot,
 } from './suspectTypes';
@@ -82,6 +84,61 @@ export function initialPhotoSlots(): SuspectPhotoSlot[] {
   return PHOTO_SLOT_DEFS.map((d) => emptyPhotoSlot(d.poseType, d.label, d.required));
 }
 
+export const FINGERPRINT_SLOT_DEFS: {
+  fingerPosition: FingerPosition;
+  label: string;
+  required: boolean;
+  hint: string;
+}[] = [
+  {
+    fingerPosition: 'RIGHT_THUMB',
+    label: 'Right thumb',
+    required: true,
+    hint: 'Mandatory — used for AFIS duplicate checks and field search',
+  },
+  {
+    fingerPosition: 'RIGHT_INDEX',
+    label: 'Right index',
+    required: false,
+    hint: 'Optional — improves identification coverage',
+  },
+  {
+    fingerPosition: 'LEFT_THUMB',
+    label: 'Left thumb',
+    required: false,
+    hint: 'Optional secondary print',
+  },
+];
+
+export function emptyFingerprintSlot(
+  fingerPosition: FingerPosition,
+  label: string,
+  required: boolean
+): SuspectFingerprintSlot {
+  return {
+    id: newRowId(),
+    fingerPosition,
+    label,
+    required,
+    printId: null,
+    templateDataB64: null,
+    templateFormat: 'ISO19794-2',
+    templateHash: null,
+    qualityScore: null,
+    deviceModel: null,
+    status: 'empty',
+    errorMessage: null,
+    duplicateMatches: [],
+    duplicateAcknowledged: false,
+  };
+}
+
+export function initialFingerprintSlots(): SuspectFingerprintSlot[] {
+  return FINGERPRINT_SLOT_DEFS.map((d) =>
+    emptyFingerprintSlot(d.fingerPosition, d.label, d.required)
+  );
+}
+
 function newDraftId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -120,6 +177,7 @@ export function emptyDossierDraft(): SuspectDossierDraft {
   return {
     dossierDraftId: newDraftId(),
     photos: initialPhotoSlots(),
+    fingerprints: initialFingerprintSlots(),
     criminalName: '',
     aliasName: '',
     gender: '',
@@ -148,6 +206,12 @@ export const WIZARD_STEPS = [
     label: 'Suspect photo',
     shortLabel: 'Photo',
     description: 'Upload a clear photograph before entering details.',
+  },
+  {
+    id: 'fingerprint',
+    label: 'Fingerprints',
+    shortLabel: 'Prints',
+    description: 'Capture ISO templates from the SecuGen scanner (no images stored).',
   },
   {
     id: 'identity',

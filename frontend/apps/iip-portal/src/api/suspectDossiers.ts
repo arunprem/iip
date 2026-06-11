@@ -93,6 +93,18 @@ function draftToCreatePayload(
       faceCount: p.faceCount,
       status: p.status === 'duplicate' && p.storageKey ? 'validated' : p.status,
     })),
+    fingerprints: draft.fingerprints
+      .filter((f) => f.templateDataB64 && (f.status === 'validated' || f.status === 'duplicate'))
+      .map((f) => ({
+        id: f.id,
+        fingerPosition: f.fingerPosition,
+        templateFormat: f.templateFormat,
+        templateDataB64: f.templateDataB64,
+        printId: f.printId,
+        qualityScore: f.qualityScore,
+        deviceModel: f.deviceModel,
+        status: 'validated',
+      })),
     linkDecision: linkDecision
       ? {
           masterSuspectId: linkDecision.masterSuspectId,

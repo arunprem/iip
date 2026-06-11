@@ -24,14 +24,17 @@ from iip_core.errors import IIPException, iip_exception_handler
 from iip_core.logging import configure_logging, get_logger
 from .routers import chat as chat_router
 from .routers import faces as faces_router
+from .routers import fingerprints as fingerprints_router
 from .routers import health as health_router
 from .routers import rag as rag_router
 from .services.face_index import FaceIndexService
+from .services.fingerprint_index import FingerprintIndexService
 from .services.face_pipeline import warmup_face_models
 from .settings import get_ml_settings
 
 settings = get_ml_settings()
 _face_index = FaceIndexService()
+_fingerprint_index = FingerprintIndexService()
 logger = get_logger(__name__)
 
 
@@ -46,8 +49,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db(settings)
     try:
         await _face_index.ensure_index()
+        await _fingerprint_index.ensure_index()
     except Exception as exc:
-        logger.warning("face_index_bootstrap_failed", error=str(exc))
+        logger.warning("biometric_index_bootstrap_failed", error=str(exc))
 
     warmup_task: asyncio.Task[None] | None = None
 
@@ -76,6 +80,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except asyncio.CancelledError:
             pass
     await _face_index.close()
+    await _fingerprint_index.close()
     await close_db()
     logger.info("ml-gateway-svc shutdown complete")
 
@@ -107,6 +112,9 @@ def create_app() -> FastAPI:
     app.include_router(chat_router.router, prefix="/api/v1/ml/chat", tags=["chat"])
     app.include_router(rag_router.router, prefix="/api/v1/ml/rag", tags=["rag"])
     app.include_router(faces_router.router, prefix="/api/v1/ml/faces", tags=["faces"])
+    app.include_router(
+        fingerprints_router.router, prefix="/api/v1/ml/fingerprints", tags=["fingerprints"]
+    )
 
     FastAPIInstrumentor.instrument_app(app)
 

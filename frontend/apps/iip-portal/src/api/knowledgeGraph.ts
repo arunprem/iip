@@ -5,13 +5,17 @@ export interface SuspectProfileHit {
   display_name: string;
   criminal_name: string;
   alias_name: string | null;
-  dossier_id: string;
+  dossier_id: string | null;
   gender?: string | null;
   fathers_name?: string | null;
   age?: number | null;
   photo_id?: string | null;
   dossier_draft_id?: string | null;
   storage_key?: string | null;
+  office_name?: string | null;
+  profile_kind?: 'dossier' | 'stub';
+  link_status?: string | null;
+  match_tags?: string[];
 }
 
 export interface SuspectProfileSearchOptions {

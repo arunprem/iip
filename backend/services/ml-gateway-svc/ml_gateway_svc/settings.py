@@ -67,6 +67,14 @@ class MlGatewaySettings(BaseServiceSettings):
     )
     suspect_photos_prefix: str = Field(default="suspect-photos")
 
+    fingerprint_index_name: str = Field(default="iip-suspect-fingerprints")
+    fingerprint_embedding_dims: int = Field(default=512)
+    fingerprint_identify_min_cosine: float = Field(default=0.82)
+    fingerprint_duplicate_min_cosine: float = Field(default=0.78)
+    fingerprint_match_min_gap: float = Field(default=0.04)
+    fingerprint_match_high_confidence_cosine: float = Field(default=0.88)
+    fingerprint_search_k: int = Field(default=8)
+
 
 @lru_cache(maxsize=1)
 def get_ml_settings() -> MlGatewaySettings:

@@ -16,30 +16,16 @@ double kgNodeRadius(GraphNode node) {
 
 double kgNodeFitExtent(GraphNode node) => kgNodeRadius(node) + kKgLabelClearance + 16;
 
-/// Minimum arc spacing between node centers on a ring.
-double _ringSpacing(GraphNode node) {
-  final r = kgNodeRadius(node);
-  return r * 2 + kKgLabelClearance + 28;
-}
-
-double _ringRadiusForCount(List<GraphNode> nodes, {required double floor}) {
-  if (nodes.isEmpty) return floor;
-  if (nodes.length == 1) return floor;
-  final spacing = nodes.map(_ringSpacing).reduce(math.max);
-  final circumference = spacing * nodes.length;
-  return math.max(floor, circumference / (2 * math.pi));
-}
-
 void spreadKgNodes(List<GraphNode> nodes) {
   final center = nodes.where((n) => n.isCenter).firstOrNull;
   final associates =
       nodes.where((n) => !n.isCenter && n.resolvedKind != GraphNodeKind.relative).toList();
   final relatives = nodes.where((n) => n.resolvedKind == GraphNodeKind.relative).toList();
 
-  final centerReach = center != null ? _ringSpacing(center) : 120.0;
-  final associateRing = _ringRadiusForCount(associates, floor: centerReach + 90);
-  final relativeRing = associateRing +
-      _ringRadiusForCount(relatives, floor: relatives.isEmpty ? 0 : 120);
+  // Match web `spreadNodesInitially` — compact rings so fit-to-view zooms in further.
+  final associateRing = math.max(120.0, associates.length * 56.0);
+  final relativeRing =
+      associateRing + (relatives.isEmpty ? 0.0 : math.max(85.0, relatives.length * 44.0));
 
   if (center != null) {
     center.x = 0;

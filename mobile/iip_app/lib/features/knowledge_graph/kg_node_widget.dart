@@ -13,7 +13,7 @@ class KgNodeWidget extends StatelessWidget {
     required this.node,
     required this.theme,
     required this.photo,
-    required this.dimmed,
+    this.opacity = 1,
     required this.focused,
     required this.onTap,
     required this.onDoubleTap,
@@ -22,7 +22,7 @@ class KgNodeWidget extends StatelessWidget {
   final GraphNode node;
   final KgGraphTheme theme;
   final ui.Image? photo;
-  final bool dimmed;
+  final double opacity;
   final bool focused;
   final VoidCallback onTap;
   final VoidCallback onDoubleTap;
@@ -50,9 +50,9 @@ class KgNodeWidget extends StatelessWidget {
       onDoubleTap: onDoubleTap,
       behavior: HitTestBehavior.opaque,
       child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        opacity: dimmed ? 0.28 : 1,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeInOutCubic,
+        opacity: opacity.clamp(0.0, 1.0),
         child: SizedBox(
           width: size,
           height: size + 28,

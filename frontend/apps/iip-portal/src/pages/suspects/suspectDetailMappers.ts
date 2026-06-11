@@ -1,4 +1,9 @@
-import { PHOTO_SLOT_DEFS, emptyAddress, emptyPresentAddress } from './suspectFormDefaults';
+import {
+  FINGERPRINT_SLOT_DEFS,
+  PHOTO_SLOT_DEFS,
+  emptyAddress,
+  emptyPresentAddress,
+} from './suspectFormDefaults';
 import type {
   ContactType,
   SocialPlatform,
@@ -144,6 +149,22 @@ export function dossierDetailToDraft(detail: Record<string, unknown>): SuspectDo
     editingMasterSuspectId: str(detail.master_suspect_id) || undefined,
     editingChildSuspectId: str(detail.suspect_id) || undefined,
     photos: mapPhotos(detail),
+    fingerprints: FINGERPRINT_SLOT_DEFS.map((def) => ({
+      id: crypto.randomUUID(),
+      fingerPosition: def.fingerPosition,
+      label: def.label,
+      required: def.required,
+      printId: null,
+      templateDataB64: null,
+      templateFormat: 'ISO19794-2',
+      templateHash: null,
+      qualityScore: null,
+      deviceModel: null,
+      status: 'empty' as const,
+      errorMessage: null,
+      duplicateMatches: [],
+      duplicateAcknowledged: false,
+    })),
     criminalName: str(identity.criminal_name),
     aliasName: str(identity.alias_name),
     gender: str(identity.gender),
@@ -200,6 +221,18 @@ export function draftToUpdatePayload(draft: SuspectDossierDraft) {
         face_id: p.faceId,
         detected_pose: p.detectedPose,
         face_count: p.faceCount,
+      })),
+    fingerprints: draft.fingerprints
+      .filter((f) => f.templateDataB64 && (f.status === 'validated' || f.status === 'duplicate'))
+      .map((f) => ({
+        id: f.id,
+        fingerPosition: f.fingerPosition,
+        templateFormat: f.templateFormat,
+        templateDataB64: f.templateDataB64,
+        printId: f.printId,
+        qualityScore: f.qualityScore,
+        deviceModel: f.deviceModel,
+        status: 'validated',
       })),
   };
 }

@@ -10,6 +10,7 @@ import '../auth/auth_controller.dart';
 import '../suspects/suspect_dossier_detail_screen.dart';
 import '../suspects/suspect_repository.dart';
 import 'kg_graph_theme.dart';
+import 'kg_relation_colors.dart';
 import 'kg_network_view.dart';
 import 'kg_node_intel_sheet.dart';
 import 'knowledge_graph_repository.dart';
@@ -41,6 +42,8 @@ class _KnowledgeGraphScreenState extends State<KnowledgeGraphScreen> {
   bool _searching = false;
   bool _loadingGraph = false;
   List<SuspectProfileHit> _results = [];
+  bool _hasMoreResults = false;
+  bool _loadingMore = false;
   SuspectProfileHit? _selected;
   NetworkGraphResponse? _graph;
   String? _error;
@@ -90,6 +93,25 @@ class _KnowledgeGraphScreenState extends State<KnowledgeGraphScreen> {
     });
   }
 
+  Future<void> _loadMoreResults() async {
+    final q = _searchController.text.trim();
+    if (q.length < 2 || _loadingMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final res = await _kgRepo.searchProfiles(q, offset: _results.length);
+      if (!mounted) return;
+      setState(() {
+        _results = groupProfileHitsByMaster([..._results, ...res.results]);
+        _hasMoreResults = res.hasMore;
+        _loadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
+      _showSnack('Could not load more profiles.');
+    }
+  }
+
   Future<void> _runSearch() async {
     final q = _searchController.text.trim();
     if (q.length < 2) return;
@@ -106,7 +128,8 @@ class _KnowledgeGraphScreenState extends State<KnowledgeGraphScreen> {
       final res = await _kgRepo.searchProfiles(q);
       if (!mounted) return;
       setState(() {
-        _results = res.results;
+        _results = groupProfileHitsByMaster(res.results);
+        _hasMoreResults = res.hasMore;
         _searching = false;
       });
       _dismissSearchKeyboard();
@@ -171,7 +194,6 @@ class _KnowledgeGraphScreenState extends State<KnowledgeGraphScreen> {
         next.add(key);
       }
       _relationFilters = next;
-      _fitToken++;
     });
   }
 
@@ -258,6 +280,9 @@ class _KnowledgeGraphScreenState extends State<KnowledgeGraphScreen> {
                 results: _results,
                 repo: _suspectRepo,
                 onAnalyze: _runAnalysis,
+                hasMore: _hasMoreResults,
+                loadingMore: _loadingMore,
+                onLoadMore: _loadMoreResults,
               ),
             ),
           ] else ...[
@@ -266,6 +291,7 @@ class _KnowledgeGraphScreenState extends State<KnowledgeGraphScreen> {
             if (relationStats.isNotEmpty)
               _RelationFilterBar(
                 colors: colors,
+                isDark: isDark,
                 stats: relationStats,
                 active: _relationFilters,
                 onToggle: _toggleRelationFilter,
@@ -316,7 +342,7 @@ class _KnowledgeGraphScreenState extends State<KnowledgeGraphScreen> {
                                   descendantsAreFocusable: true,
                                   child: KgNetworkView(
                                     key: ValueKey(
-                                      'kg-${isDark ? 1 : 0}-${_graph!.centerId}-${_relationFilters.join('|')}',
+                                      'kg-${isDark ? 1 : 0}-${_graph!.centerId}',
                                     ),
                                     graph: _graph!,
                                     theme: graphTheme,
@@ -405,12 +431,18 @@ class _SearchResultsList extends StatelessWidget {
     required this.results,
     required this.repo,
     required this.onAnalyze,
+    required this.hasMore,
+    required this.loadingMore,
+    required this.onLoadMore,
   });
 
   final IipColors colors;
   final List<SuspectProfileHit> results;
   final SuspectRepository repo;
   final ValueChanged<SuspectProfileHit> onAnalyze;
+  final bool hasMore;
+  final bool loadingMore;
+  final VoidCallback onLoadMore;
 
   @override
   Widget build(BuildContext context) {
@@ -428,9 +460,15 @@ class _SearchResultsList extends StatelessWidget {
     }
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: results.length,
+      itemCount: results.length + (hasMore ? 1 : 0),
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
+        if (index >= results.length) {
+          return OutlinedButton(
+            onPressed: loadingMore ? null : onLoadMore,
+            child: Text(loadingMore ? 'Loading…' : 'Load more matches'),
+          );
+        }
         final hit = results[index];
         return _SearchResultTile(
           hit: hit,
@@ -480,12 +518,7 @@ class _SearchResultTileState extends State<_SearchResultTile> {
   Widget build(BuildContext context) {
     final hit = widget.hit;
     final colors = widget.colors;
-    final meta = <String>[
-      if (hit.aliasName != null && hit.aliasName!.isNotEmpty) 'aka ${hit.aliasName}',
-      if (hit.gender != null && hit.gender!.isNotEmpty) hit.gender!,
-      if (hit.fathersName != null && hit.fathersName!.isNotEmpty) "S/o ${hit.fathersName}",
-      if (hit.age != null) '${hit.age} yrs',
-    ].join(' · ');
+    final meta = hit.metaLine;
 
     return Card(
       child: InkWell(
@@ -519,6 +552,33 @@ class _SearchResultTileState extends State<_SearchResultTile> {
                         fontSize: 15,
                       ),
                     ),
+                    if (hit.matchTags.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: hit.matchTags
+                            .map(
+                              (tag) => Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: colors.primary.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: colors.primary.withValues(alpha: 0.35)),
+                                ),
+                                child: Text(
+                                  tag,
+                                  style: TextStyle(
+                                    color: colors.primary,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ],
                     if (meta.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(meta, style: TextStyle(color: colors.textMuted, fontSize: 12)),
@@ -571,15 +631,22 @@ class _SelectedBanner extends StatelessWidget {
 class _RelationFilterBar extends StatelessWidget {
   const _RelationFilterBar({
     required this.colors,
+    required this.isDark,
     required this.stats,
     required this.active,
     required this.onToggle,
   });
 
   final IipColors colors;
+  final bool isDark;
   final List<KgRelationStat> stats;
   final Set<String> active;
   final ValueChanged<String> onToggle;
+
+  String _roleFromKey(String key) {
+    final idx = key.indexOf(':');
+    return idx >= 0 ? key.substring(idx + 1) : key;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -593,10 +660,21 @@ class _RelationFilterBar extends StatelessWidget {
         itemBuilder: (context, index) {
           final stat = stats[index];
           final selected = active.contains(stat.key);
+          final chipColor = relationChipColor(_roleFromKey(stat.key), isDark);
           return FilterChip(
+            avatar: CircleAvatar(
+              radius: 5,
+              backgroundColor: chipColor,
+            ),
             label: Text('${stat.label} (${stat.count})'),
             selected: selected,
             onSelected: (_) => onToggle(stat.key),
+            selectedColor: chipColor.withValues(alpha: 0.22),
+            checkmarkColor: chipColor,
+            side: BorderSide(
+              color: selected ? chipColor : colors.border,
+              width: selected ? 1.5 : 1,
+            ),
             visualDensity: VisualDensity.compact,
           );
         },
