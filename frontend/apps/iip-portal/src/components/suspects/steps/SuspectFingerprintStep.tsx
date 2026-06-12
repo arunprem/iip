@@ -105,7 +105,7 @@ export function SuspectFingerprintStep({
         );
       }
     } catch (err: unknown) {
-      let errorMessage = 'Fingerprint ingest failed. Check ml-gateway on port 8020.';
+      let errorMessage = 'Fingerprint ingest failed. Please check network connection and try again.';
       if (axios.isAxiosError(err) && err.response) {
         errorMessage = extractApiErrorMessage(err.response.data, err.response.status);
       } else if (err instanceof Error && err.message.trim()) {
@@ -228,24 +228,16 @@ export function SuspectFingerprintStep({
               </p>
             ) : bridgeOffline ? (
               <>
-                <p className="font-medium">Capture bridge not running</p>
-                <p className="text-xs opacity-90 whitespace-pre-wrap">
-                  {bridgeStatus?.error}
-                </p>
-                <p className="text-xs opacity-90 mt-2">
-                  SecuGen HU20 on Mac: there is no official macOS SDK. Use mock mode for testing, or{' '}
-                  <strong>Upload .bin</strong> from SecuGen software on Windows.
+                <p className="font-medium">Fingerprint scanner connection issue</p>
+                <p className="text-xs opacity-90">
+                  The fingerprint capture helper service could not be reached. Please check if the helper program is running or try importing a template file.
                 </p>
               </>
             ) : macNoSdk && !bridgeStatus?.can_capture ? (
               <>
-                <p className="font-medium">USB may be connected — macOS cannot capture directly</p>
-                <p className="text-xs opacity-90">{bridgeStatus?.message}</p>
-                <p className="text-xs opacity-90 mt-1">
-                  For testing on this iMac, restart the bridge with mock mode:
-                  <code className="block mt-1 text-[11px]">
-                    FINGERPRINT_BRIDGE_MOCK=1 python3 infra/fingerprint-bridge/bridge.py
-                  </code>
+                <p className="font-medium">USB device detected but scanner capture is unavailable</p>
+                <p className="text-xs opacity-90">
+                  The local environment does not support direct capture. Please import the fingerprint template file instead.
                 </p>
               </>
             ) : (
@@ -274,8 +266,7 @@ export function SuspectFingerprintStep({
 
       <div className="dossier-photo-step__toolbar">
         <p className="dossier-photo-step__toolbar-meta text-sm text-iip-text-muted">
-          Scan calls a local service on port <code>17890</code> (not the browser USB stack). On Mac,
-          use mock bridge or <strong>Upload .bin</strong>. Mobile-approved prints also appear below.
+          Integrates with the workstation scanner helper service. You can capture prints directly, upload templates, or view mobile-approved prints below.
         </p>
         <div className="dossier-photo-step__count">
           <span

@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { Fingerprint } from 'lucide-react';
 import {
   FieldRow,
   FieldTable,

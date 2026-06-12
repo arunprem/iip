@@ -89,7 +89,7 @@ class _FrsCaptureScreenState extends State<FrsCaptureScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'Face recognition failed. Check ML gateway is running on port 8020.';
+        _error = 'Face recognition failed. Please check your network connection.';
         _busy = false;
       });
     }

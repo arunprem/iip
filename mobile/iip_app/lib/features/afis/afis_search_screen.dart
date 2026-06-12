@@ -134,7 +134,7 @@ class _AfisSearchScreenState extends State<AfisSearchScreen> {
       if (!mounted) return;
       setState(() {
         _error =
-            'Fingerprint search failed. Check HU20 connection and ML gateway (port 8020).';
+            'Fingerprint search failed. Please verify scanner connection and network accessibility.';
         _busy = false;
       });
     }
@@ -250,14 +250,6 @@ class _AfisSearchScreenState extends State<AfisSearchScreen> {
                       if (v != null) setState(() => _matchEngine = v);
                     },
             ),
-            if (_matchEngine == 'nbis')
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'NBIS uses the captured grayscale image. Requires make nbis-docker and dual-format enrollment.',
-                  style: TextStyle(color: colors.textMuted, fontSize: 12, height: 1.35),
-                ),
-              ),
           ],
           const SizedBox(height: 16),
           FilledButton.icon(

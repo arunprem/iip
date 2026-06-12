@@ -870,10 +870,10 @@ class _FingerprintRefRowState extends State<_FingerprintRefRow> {
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: (quality >= 80
-                                ? Colors.green
+                                ? widget.colors.success
                                 : quality >= 50
-                                    ? Colors.amber
-                                    : Colors.red)
+                                    ? widget.colors.warning
+                                    : widget.colors.error)
                             .withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -881,10 +881,10 @@ class _FingerprintRefRowState extends State<_FingerprintRefRow> {
                         '$quality% Quality',
                         style: TextStyle(
                           color: quality >= 80
-                              ? Colors.green
+                              ? widget.colors.success
                               : quality >= 50
-                                  ? Colors.amber
-                                  : Colors.red,
+                                  ? widget.colors.warning
+                                  : widget.colors.error,
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                         ),

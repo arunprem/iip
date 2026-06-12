@@ -81,7 +81,6 @@ function isRequiredFingerprintCaptured(draft: SuspectDossierDraft): boolean {
 }
 
 function isFingerprintDuplicateResolved(
-  draft: SuspectDossierDraft,
   slot: SuspectFingerprintSlot
 ): boolean {
   if (slot.duplicateMatches.length === 0) return true;
@@ -97,7 +96,7 @@ export function fingerprintsStepBlockedReason(draft: SuspectDossierDraft): strin
   const unresolved = draft.fingerprints.find(
     (f) =>
       f.duplicateMatches.length > 0 &&
-      !isFingerprintDuplicateResolved(draft, f) &&
+      !isFingerprintDuplicateResolved(f) &&
       (f.status === 'duplicate' || f.status === 'validated')
   );
   if (unresolved) {

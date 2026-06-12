@@ -164,7 +164,7 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoT
             (!err.response || err.code === 'ECONNABORTED' || err.message.includes('Network'));
           setModelsMessage(
             isNetwork
-              ? 'Cannot reach ml-gateway (port 8020).'
+              ? 'Cannot reach face service.'
               : 'Face service unavailable.'
           );
         }
@@ -237,7 +237,7 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoT
     if (slotNeedsFaceCheck(slot.poseType) && !faceServiceReady) {
       return modelsReady === false
         ? 'Face models are still loading. Wait for the green status, then try again.'
-        : 'Cannot reach the face service. Start ml-gateway on port 8020.';
+        : 'Cannot reach the face service. Please verify network connection.';
     }
     if (!ACCEPT_TYPES.some((t) => file.type === t || file.type.startsWith('image/'))) {
       return 'Use JPEG, PNG, or WebP.';
@@ -309,7 +309,7 @@ export function SuspectPhotoStep({ draft, onPhotosChange, onLinkDecision, onGeoT
         errorMessage: null,
       });
     } catch (err: unknown) {
-      let errorMessage = 'Face analysis failed. Check that ml-gateway is running on port 8020.';
+      let errorMessage = 'Face analysis failed. Please verify network connection.';
       if (axios.isAxiosError(err)) {
         if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
           errorMessage =

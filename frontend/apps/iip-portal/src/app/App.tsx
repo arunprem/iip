@@ -123,7 +123,7 @@ const AuthenticatedLayout = () => {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-iip-bg px-6 text-center">
           <p className="text-sm text-iip-text-muted max-w-md">
-            Could not load your profile. Check that IAM service is running on port 8010, then sign in
+            Could not load your profile. Check your network connection, then sign in
             again.
           </p>
           <div className="flex gap-3">

@@ -183,6 +183,14 @@ async def get_fingerprint_image(
 ) -> Response:
     """Read the stored raw grayscale fingerprint image, convert it to PNG using Pillow, and return it."""
     _ = current_user
+    try:
+        uuid.UUID(print_id)
+    except ValueError as exc:
+        raise IIPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="Invalid print ID format",
+        ) from exc
     import os
     import json
     from PIL import Image
