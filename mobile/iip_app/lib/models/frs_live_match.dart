@@ -1,7 +1,7 @@
 import 'frs_match.dart';
 
-/// Minimum match % for live FRS red box and bottom tray.
-const kFrsLiveMatchPercent = 75;
+/// Minimum match % for live FRS red/yellow box and bottom tray.
+const kFrsLiveMatchPercent = 70;
 
 /// One face detected in a live camera frame (server-side detection + match).
 class FrsLiveFaceMatch {

@@ -265,17 +265,39 @@ class _FrsLiveScreenState extends State<FrsLiveScreen> {
       final size = controller.value.previewSize;
       if (size == null) return true; // unknown — optimistically proceed
 
-      final inputImage = InputImage.fromBytes(
-        bytes: bytes,
-        metadata: InputImageMetadata(
-          size: Size(size.width, size.height),
-          rotation: InputImageRotation.rotation0deg,
-          format: Platform.isIOS
-              ? InputImageFormat.bgra8888
-              : InputImageFormat.nv21,
-          bytesPerRow: controller.value.previewSize?.width.toInt() ?? 0,
-        ),
-      );
+      final sensorOrientation = controller.description.sensorOrientation;
+      InputImageRotation rotation;
+      if (sensorOrientation == 90) {
+        rotation = InputImageRotation.rotation90deg;
+      } else if (sensorOrientation == 180) {
+        rotation = InputImageRotation.rotation180deg;
+      } else if (sensorOrientation == 270) {
+        rotation = InputImageRotation.rotation270deg;
+      } else {
+        rotation = InputImageRotation.rotation0deg;
+      }
+
+      InputImage inputImage;
+      if (Platform.isAndroid) {
+        // On Android, the stream bytes are JPEG. We write them to a local temp file
+        // and construct the InputImage using fromFilePath.
+        final tempDir = Directory.systemTemp;
+        final tempFile = File('${tempDir.path}/live_frame_check.jpg');
+        await tempFile.writeAsBytes(bytes, flush: true);
+        inputImage = InputImage.fromFilePath(tempFile.path);
+      } else {
+        // On iOS, the stream bytes are BGRA8888.
+        inputImage = InputImage.fromBytes(
+          bytes: bytes,
+          metadata: InputImageMetadata(
+            size: Size(size.width, size.height),
+            rotation: rotation,
+            format: InputImageFormat.bgra8888,
+            bytesPerRow: controller.value.previewSize?.width.toInt() ?? 0,
+          ),
+        );
+      }
+
       final faces = await _localDetector.processImage(inputImage);
       return faces.isNotEmpty;
     } catch (_) {
@@ -565,9 +587,9 @@ class _LegendBar extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _LegendDot(color: Colors.redAccent, label: '≥72% match'),
+                _LegendDot(color: Colors.redAccent, label: '≥75% match'),
                 SizedBox(width: 12),
-                _LegendDot(color: Colors.orangeAccent, label: '68–71% match'),
+                _LegendDot(color: Colors.orangeAccent, label: '70–74% match'),
                 SizedBox(width: 12),
                 _LegendDot(color: Colors.greenAccent, label: 'Face, no match'),
               ],
@@ -657,9 +679,9 @@ class _FaceBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isHighMatch = face.match != null && face.matchPercent >= 72;
+    final isHighMatch = face.match != null && face.matchPercent >= 75;
     final isMediumMatch =
-        face.match != null && face.matchPercent >= 68 && face.matchPercent < 72;
+        face.match != null && face.matchPercent >= 70 && face.matchPercent < 75;
     final hasMatch = isHighMatch || isMediumMatch;
 
     final color = isHighMatch
@@ -754,93 +776,107 @@ class _MatchTray extends StatelessWidget {
                       final key = match.storageKey;
                       final bytes = key != null ? thumbCache[key] : null;
                       final id = matchKey(face);
-                      return Material(
-                        color: colors.surfaceHover,
-                        borderRadius: BorderRadius.circular(12),
-                        clipBehavior: Clip.antiAlias,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            InkWell(
-                              onTap: () => onTap(face),
-                              child: SizedBox(
-                                width: 200,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(8),
-                                  child: Row(
-                                    children: [
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: SizedBox(
-                                          width: 52,
-                                          height: 52,
-                                          child: bytes != null
-                                              ? Image.memory(bytes,
-                                                  fit: BoxFit.cover)
-                                              : ColoredBox(
-                                                  color: colors.primary
-                                                      .withValues(alpha: 0.1),
-                                                  child: Icon(Icons.person,
-                                                      color: colors.primary),
-                                                ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Text(
-                                              match.criminalName ?? 'Unknown',
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                color: colors.text,
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                            Text(
-                                              '${face.matchPercent}% match',
-                                              style: TextStyle(
-                                                color: colors.error,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              top: 2,
-                              right: 2,
-                              child: Material(
-                                color: colors.surface,
-                                shape: const CircleBorder(),
-                                elevation: 2,
-                                child: InkWell(
-                                  customBorder: const CircleBorder(),
-                                  onTap: id.isEmpty ? null : () => onRemove(id),
+
+                      final isHighMatch = face.matchPercent >= 75;
+                      final isMediumMatch = face.matchPercent >= 70 && face.matchPercent < 75;
+                      final borderColor = isHighMatch ? Colors.redAccent : Colors.orangeAccent;
+
+                      return Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: borderColor,
+                            width: 2.0,
+                          ),
+                        ),
+                        child: Material(
+                          color: colors.surfaceHover,
+                          borderRadius: BorderRadius.circular(10),
+                          clipBehavior: Clip.antiAlias,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              InkWell(
+                                onTap: () => onTap(face),
+                                child: SizedBox(
+                                  width: 196,
                                   child: Padding(
-                                    padding: const EdgeInsets.all(4),
-                                    child: Icon(
-                                      Icons.close_rounded,
-                                      size: 16,
-                                      color: colors.textMuted,
+                                    padding: const EdgeInsets.all(8),
+                                    child: Row(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: SizedBox(
+                                            width: 52,
+                                            height: 52,
+                                            child: bytes != null
+                                                ? Image.memory(bytes,
+                                                    fit: BoxFit.cover)
+                                                : ColoredBox(
+                                                    color: colors.primary
+                                                        .withValues(alpha: 0.1),
+                                                    child: Icon(Icons.person,
+                                                        color: colors.primary),
+                                                  ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Text(
+                                                match.criminalName ?? 'Unknown',
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: colors.text,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                              Text(
+                                                '${face.matchPercent}% match',
+                                                style: TextStyle(
+                                                  color: borderColor,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                              Positioned(
+                                top: 2,
+                                right: 2,
+                                child: Material(
+                                  color: colors.surface,
+                                  shape: const CircleBorder(),
+                                  elevation: 2,
+                                  child: InkWell(
+                                    customBorder: const CircleBorder(),
+                                    onTap: id.isEmpty ? null : () => onRemove(id),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(4),
+                                      child: Icon(
+                                        Icons.close_rounded,
+                                        size: 16,
+                                        color: colors.textMuted,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     },
