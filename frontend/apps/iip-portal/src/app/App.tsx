@@ -45,6 +45,7 @@ const SuspectDossierCreate = React.lazy(() => import('../pages/suspects/SuspectD
 const SuspectDossierEdit = React.lazy(() => import('../pages/suspects/SuspectDossierEdit'))
 const SuspectDossierDetail = React.lazy(() => import('../pages/suspects/SuspectDossierDetail'))
 const SuspectMasterProfile = React.lazy(() => import('../pages/suspects/SuspectMasterProfile'))
+const FingerprintApprovals = React.lazy(() => import('../pages/suspects/FingerprintApprovals'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -197,6 +198,7 @@ const AuthenticatedLayout = () => {
                 <Route path="/kg-canvas" element={<KGCanvas />} />
                 <Route path="/humint-vault" element={<HumintVault />} />
                 <Route path="/suspects" element={<SuspectDossierList />} />
+                <Route path="/suspects/fingerprint-approvals" element={<FingerprintApprovals />} />
                 <Route path="/suspects/new" element={<SuspectDossierCreate />} />
                 <Route path="/suspects/masters/:masterId" element={<SuspectMasterProfile />} />
                 <Route path="/suspects/:dossierId/edit" element={<SuspectDossierEdit />} />

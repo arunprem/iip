@@ -10,6 +10,8 @@ class SuspectRepository {
 
   final ApiClient _api;
 
+  ApiClient get api => _api;
+
   Future<SuspectDossierDetail> fetchDossierDetail(String dossierId) async {
     final json = await _api.getJson('/intelligence/suspect-dossiers/$dossierId');
     return SuspectDossierDetail.fromJson(json);

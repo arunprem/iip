@@ -32,7 +32,14 @@ def normalize_auth_client_type(value: str | None) -> AuthClientType:
 
 
 def allowed_keycloak_client_ids(settings: BaseServiceSettings) -> frozenset[str]:
-    return frozenset({settings.keycloak_client_id, settings.keycloak_mobile_client_id})
+    return frozenset({
+        settings.keycloak_client_id,
+        settings.keycloak_mobile_client_id,
+        "iip-backend",
+        "iip-mobile",
+        "iip-web",
+        "ml-gateway-svc",
+    })
 
 
 def keycloak_client_credentials(

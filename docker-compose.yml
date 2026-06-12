@@ -166,6 +166,28 @@ services:
       - ./infra/opa/policies:/policies
 
   # ─── MinIO (Object storage for evidence, media artifacts) ───────────────────
+  # ─── OpenAFIS (fingerprint 1:N — build: make openafis-docker)
+  openafis-matcher:
+    build:
+      context: ./infra/openafis-matcher
+      dockerfile: Dockerfile
+    image: iip-openafis-matcher:latest
+    container_name: iip-openafis-matcher
+    restart: unless-stopped
+    volumes:
+      - ./data/openafis/templates:/data/templates
+
+  nbis-matcher:
+    build:
+      context: ./infra/nbis-matcher
+      dockerfile: Dockerfile
+    image: iip-nbis-matcher:latest
+    container_name: iip-nbis-matcher
+    restart: unless-stopped
+    volumes:
+      - ./data/nbis/xyt:/data/xyt
+      - ./data/nbis/images:/data/images
+
   minio:
     image: minio/minio:latest
     container_name: iip-minio

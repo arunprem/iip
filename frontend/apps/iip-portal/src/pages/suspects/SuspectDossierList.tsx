@@ -6,6 +6,7 @@ import {
   ArrowUpDown,
   FileSearch,
   Pencil,
+  Fingerprint,
   Plus,
   Search,
   UserRound,
@@ -175,10 +176,16 @@ export default function SuspectDossierList() {
       description="Register and maintain criminal dossiers with photographs, identity, contacts, and associate details."
       icon={FileSearch}
       actions={
-        <Link to="/suspects/new" className="btn-primary btn inline-flex items-center gap-1.5">
-          <Plus size={18} />
-          New dossier
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link to="/suspects/fingerprint-approvals" className="btn btn-secondary inline-flex items-center gap-1.5">
+            <Fingerprint size={18} />
+            Fingerprint approvals
+          </Link>
+          <Link to="/suspects/new" className="btn-primary btn inline-flex items-center gap-1.5">
+            <Plus size={18} />
+            New dossier
+          </Link>
+        </div>
       }
     >
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

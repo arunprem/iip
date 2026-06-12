@@ -1,0 +1,158 @@
+ECLIPSE ANDROID PROJECT IMPORT SUMMARY
+======================================
+
+Ignored Files:
+--------------
+The following files were *not* copied into the new Gradle project; you
+should evaluate whether these are still needed in your project and if
+so manually move them:
+
+* README.txt
+* biolive_models\
+* biolive_models\libhu10_231l.so
+* biolive_models\libhu10_231m.so
+* biolive_models\libhu20_231l.so
+* biolive_models\libhu20_231m.so
+* hamster4-web.png
+* hamster4.png
+* proguard.cfg
+
+Moved Files:
+------------
+Android Gradle projects use a different directory structure than ADT
+Eclipse projects. Here's how the projects were restructured:
+
+* AndroidManifest.xml => app\src\main\AndroidManifest.xml
+* libs\AlCamera.jar => app\libs\AlCamera.jar
+* libs\arm64-v8a\libhu10_231l.so => app\src\main\jniLibs\arm64-v8a\libhu10_231l.so
+* libs\arm64-v8a\libhu10_231m.so => app\src\main\jniLibs\arm64-v8a\libhu10_231m.so
+* libs\arm64-v8a\libhu20_231l.so => app\src\main\jniLibs\arm64-v8a\libhu20_231l.so
+* libs\arm64-v8a\libhu20_231m.so => app\src\main\jniLibs\arm64-v8a\libhu20_231m.so
+* libs\arm64-v8a\libhu20a_231l.so => app\src\main\jniLibs\arm64-v8a\libhu20a_231l.so
+* libs\arm64-v8a\libhu20a_231m.so => app\src\main\jniLibs\arm64-v8a\libhu20a_231m.so
+* libs\arm64-v8a\libhu20ap_231l.so => app\src\main\jniLibs\arm64-v8a\libhu20ap_231l.so
+* libs\arm64-v8a\libhu20ap_231m.so => app\src\main\jniLibs\arm64-v8a\libhu20ap_231m.so
+* libs\arm64-v8a\libjnisgfdetect.so => app\src\main\jniLibs\arm64-v8a\libjnisgfdetect.so
+* libs\arm64-v8a\libjnisgfdetectfdu06.so => app\src\main\jniLibs\arm64-v8a\libjnisgfdetectfdu06.so
+* libs\arm64-v8a\libjnisgfdetectfdu07.so => app\src\main\jniLibs\arm64-v8a\libjnisgfdetectfdu07.so
+* libs\arm64-v8a\libjnisgfdetectfdu08.so => app\src\main\jniLibs\arm64-v8a\libjnisgfdetectfdu08.so
+* libs\arm64-v8a\libjnisgfdu03.so => app\src\main\jniLibs\arm64-v8a\libjnisgfdu03.so
+* libs\arm64-v8a\libjnisgfdu04.so => app\src\main\jniLibs\arm64-v8a\libjnisgfdu04.so
+* libs\arm64-v8a\libjnisgfdu05.so => app\src\main\jniLibs\arm64-v8a\libjnisgfdu05.so
+* libs\arm64-v8a\libjnisgfdu06.so => app\src\main\jniLibs\arm64-v8a\libjnisgfdu06.so
+* libs\arm64-v8a\libjnisgfdu07.so => app\src\main\jniLibs\arm64-v8a\libjnisgfdu07.so
+* libs\arm64-v8a\libjnisgfdu08.so => app\src\main\jniLibs\arm64-v8a\libjnisgfdu08.so
+* libs\arm64-v8a\libjnisgfplib.so => app\src\main\jniLibs\arm64-v8a\libjnisgfplib.so
+* libs\arm64-v8a\libjnisgnfiqlib.so => app\src\main\jniLibs\arm64-v8a\libjnisgnfiqlib.so
+* libs\arm64-v8a\libjnisgwsqlib.so => app\src\main\jniLibs\arm64-v8a\libjnisgwsqlib.so
+* libs\arm64-v8a\libnex_sdk.so => app\src\main\jniLibs\arm64-v8a\libnex_sdk.so
+* libs\armeabi-v7a\libhu10_231l.so => app\src\main\jniLibs\armeabi-v7a\libhu10_231l.so
+* libs\armeabi-v7a\libhu10_231m.so => app\src\main\jniLibs\armeabi-v7a\libhu10_231m.so
+* libs\armeabi-v7a\libhu20_231l.so => app\src\main\jniLibs\armeabi-v7a\libhu20_231l.so
+* libs\armeabi-v7a\libhu20_231m.so => app\src\main\jniLibs\armeabi-v7a\libhu20_231m.so
+* libs\armeabi-v7a\libhu20a_231l.so => app\src\main\jniLibs\armeabi-v7a\libhu20a_231l.so
+* libs\armeabi-v7a\libhu20a_231m.so => app\src\main\jniLibs\armeabi-v7a\libhu20a_231m.so
+* libs\armeabi-v7a\libhu20ap_231l.so => app\src\main\jniLibs\armeabi-v7a\libhu20ap_231l.so
+* libs\armeabi-v7a\libhu20ap_231m.so => app\src\main\jniLibs\armeabi-v7a\libhu20ap_231m.so
+* libs\armeabi-v7a\libjnisgfdetect.so => app\src\main\jniLibs\armeabi-v7a\libjnisgfdetect.so
+* libs\armeabi-v7a\libjnisgfdetectfdu06.so => app\src\main\jniLibs\armeabi-v7a\libjnisgfdetectfdu06.so
+* libs\armeabi-v7a\libjnisgfdetectfdu07.so => app\src\main\jniLibs\armeabi-v7a\libjnisgfdetectfdu07.so
+* libs\armeabi-v7a\libjnisgfdetectfdu08.so => app\src\main\jniLibs\armeabi-v7a\libjnisgfdetectfdu08.so
+* libs\armeabi-v7a\libjnisgfdu03.so => app\src\main\jniLibs\armeabi-v7a\libjnisgfdu03.so
+* libs\armeabi-v7a\libjnisgfdu04.so => app\src\main\jniLibs\armeabi-v7a\libjnisgfdu04.so
+* libs\armeabi-v7a\libjnisgfdu05.so => app\src\main\jniLibs\armeabi-v7a\libjnisgfdu05.so
+* libs\armeabi-v7a\libjnisgfdu06.so => app\src\main\jniLibs\armeabi-v7a\libjnisgfdu06.so
+* libs\armeabi-v7a\libjnisgfdu07.so => app\src\main\jniLibs\armeabi-v7a\libjnisgfdu07.so
+* libs\armeabi-v7a\libjnisgfdu08.so => app\src\main\jniLibs\armeabi-v7a\libjnisgfdu08.so
+* libs\armeabi-v7a\libjnisgfplib.so => app\src\main\jniLibs\armeabi-v7a\libjnisgfplib.so
+* libs\armeabi-v7a\libjnisgnfiqlib.so => app\src\main\jniLibs\armeabi-v7a\libjnisgnfiqlib.so
+* libs\armeabi-v7a\libjnisgwsqlib.so => app\src\main\jniLibs\armeabi-v7a\libjnisgwsqlib.so
+* libs\armeabi-v7a\libnex_sdk.so => app\src\main\jniLibs\armeabi-v7a\libnex_sdk.so
+* libs\armeabi\libhu10_231l.so => app\src\main\jniLibs\armeabi\libhu10_231l.so
+* libs\armeabi\libhu10_231m.so => app\src\main\jniLibs\armeabi\libhu10_231m.so
+* libs\armeabi\libhu20_231l.so => app\src\main\jniLibs\armeabi\libhu20_231l.so
+* libs\armeabi\libhu20_231m.so => app\src\main\jniLibs\armeabi\libhu20_231m.so
+* libs\armeabi\libhu20a_231l.so => app\src\main\jniLibs\armeabi\libhu20a_231l.so
+* libs\armeabi\libhu20a_231m.so => app\src\main\jniLibs\armeabi\libhu20a_231m.so
+* libs\armeabi\libhu20ap_231l.so => app\src\main\jniLibs\armeabi\libhu20ap_231l.so
+* libs\armeabi\libhu20ap_231m.so => app\src\main\jniLibs\armeabi\libhu20ap_231m.so
+* libs\armeabi\libjnisgfdetect.so => app\src\main\jniLibs\armeabi\libjnisgfdetect.so
+* libs\armeabi\libjnisgfdetectfdu06.so => app\src\main\jniLibs\armeabi\libjnisgfdetectfdu06.so
+* libs\armeabi\libjnisgfdetectfdu07.so => app\src\main\jniLibs\armeabi\libjnisgfdetectfdu07.so
+* libs\armeabi\libjnisgfdetectfdu08.so => app\src\main\jniLibs\armeabi\libjnisgfdetectfdu08.so
+* libs\armeabi\libjnisgfdu03.so => app\src\main\jniLibs\armeabi\libjnisgfdu03.so
+* libs\armeabi\libjnisgfdu04.so => app\src\main\jniLibs\armeabi\libjnisgfdu04.so
+* libs\armeabi\libjnisgfdu05.so => app\src\main\jniLibs\armeabi\libjnisgfdu05.so
+* libs\armeabi\libjnisgfdu06.so => app\src\main\jniLibs\armeabi\libjnisgfdu06.so
+* libs\armeabi\libjnisgfdu07.so => app\src\main\jniLibs\armeabi\libjnisgfdu07.so
+* libs\armeabi\libjnisgfdu08.so => app\src\main\jniLibs\armeabi\libjnisgfdu08.so
+* libs\armeabi\libjnisgfplib.so => app\src\main\jniLibs\armeabi\libjnisgfplib.so
+* libs\armeabi\libjnisgnfiqlib.so => app\src\main\jniLibs\armeabi\libjnisgnfiqlib.so
+* libs\armeabi\libjnisgwsqlib.so => app\src\main\jniLibs\armeabi\libjnisgwsqlib.so
+* libs\armeabi\libnex_sdk.so => app\src\main\jniLibs\armeabi\libnex_sdk.so
+* libs\x86\libhu10_231l.so => app\src\main\jniLibs\x86\libhu10_231l.so
+* libs\x86\libhu10_231m.so => app\src\main\jniLibs\x86\libhu10_231m.so
+* libs\x86\libhu20_231l.so => app\src\main\jniLibs\x86\libhu20_231l.so
+* libs\x86\libhu20_231m.so => app\src\main\jniLibs\x86\libhu20_231m.so
+* libs\x86\libhu20a_231l.so => app\src\main\jniLibs\x86\libhu20a_231l.so
+* libs\x86\libhu20a_231m.so => app\src\main\jniLibs\x86\libhu20a_231m.so
+* libs\x86\libhu20ap_231l.so => app\src\main\jniLibs\x86\libhu20ap_231l.so
+* libs\x86\libhu20ap_231m.so => app\src\main\jniLibs\x86\libhu20ap_231m.so
+* libs\x86\libjnisgfdetect.so => app\src\main\jniLibs\x86\libjnisgfdetect.so
+* libs\x86\libjnisgfdetectfdu06.so => app\src\main\jniLibs\x86\libjnisgfdetectfdu06.so
+* libs\x86\libjnisgfdetectfdu07.so => app\src\main\jniLibs\x86\libjnisgfdetectfdu07.so
+* libs\x86\libjnisgfdetectfdu08.so => app\src\main\jniLibs\x86\libjnisgfdetectfdu08.so
+* libs\x86\libjnisgfdu03.so => app\src\main\jniLibs\x86\libjnisgfdu03.so
+* libs\x86\libjnisgfdu04.so => app\src\main\jniLibs\x86\libjnisgfdu04.so
+* libs\x86\libjnisgfdu05.so => app\src\main\jniLibs\x86\libjnisgfdu05.so
+* libs\x86\libjnisgfdu06.so => app\src\main\jniLibs\x86\libjnisgfdu06.so
+* libs\x86\libjnisgfdu07.so => app\src\main\jniLibs\x86\libjnisgfdu07.so
+* libs\x86\libjnisgfdu08.so => app\src\main\jniLibs\x86\libjnisgfdu08.so
+* libs\x86\libjnisgfplib.so => app\src\main\jniLibs\x86\libjnisgfplib.so
+* libs\x86\libjnisgnfiqlib.so => app\src\main\jniLibs\x86\libjnisgnfiqlib.so
+* libs\x86\libjnisgwsqlib.so => app\src\main\jniLibs\x86\libjnisgwsqlib.so
+* libs\x86\libnex_sdk.so => app\src\main\jniLibs\x86\libnex_sdk.so
+* libs\x86_64\libhu10_231l.so => app\src\main\jniLibs\x86_64\libhu10_231l.so
+* libs\x86_64\libhu10_231m.so => app\src\main\jniLibs\x86_64\libhu10_231m.so
+* libs\x86_64\libhu20_231l.so => app\src\main\jniLibs\x86_64\libhu20_231l.so
+* libs\x86_64\libhu20_231m.so => app\src\main\jniLibs\x86_64\libhu20_231m.so
+* libs\x86_64\libhu20a_231l.so => app\src\main\jniLibs\x86_64\libhu20a_231l.so
+* libs\x86_64\libhu20a_231m.so => app\src\main\jniLibs\x86_64\libhu20a_231m.so
+* libs\x86_64\libhu20ap_231l.so => app\src\main\jniLibs\x86_64\libhu20ap_231l.so
+* libs\x86_64\libhu20ap_231m.so => app\src\main\jniLibs\x86_64\libhu20ap_231m.so
+* libs\x86_64\libjnisgfdetect.so => app\src\main\jniLibs\x86_64\libjnisgfdetect.so
+* libs\x86_64\libjnisgfdetectfdu06.so => app\src\main\jniLibs\x86_64\libjnisgfdetectfdu06.so
+* libs\x86_64\libjnisgfdetectfdu07.so => app\src\main\jniLibs\x86_64\libjnisgfdetectfdu07.so
+* libs\x86_64\libjnisgfdetectfdu08.so => app\src\main\jniLibs\x86_64\libjnisgfdetectfdu08.so
+* libs\x86_64\libjnisgfdu03.so => app\src\main\jniLibs\x86_64\libjnisgfdu03.so
+* libs\x86_64\libjnisgfdu04.so => app\src\main\jniLibs\x86_64\libjnisgfdu04.so
+* libs\x86_64\libjnisgfdu05.so => app\src\main\jniLibs\x86_64\libjnisgfdu05.so
+* libs\x86_64\libjnisgfdu06.so => app\src\main\jniLibs\x86_64\libjnisgfdu06.so
+* libs\x86_64\libjnisgfdu07.so => app\src\main\jniLibs\x86_64\libjnisgfdu07.so
+* libs\x86_64\libjnisgfdu08.so => app\src\main\jniLibs\x86_64\libjnisgfdu08.so
+* libs\x86_64\libjnisgfplib.so => app\src\main\jniLibs\x86_64\libjnisgfplib.so
+* libs\x86_64\libjnisgnfiqlib.so => app\src\main\jniLibs\x86_64\libjnisgnfiqlib.so
+* libs\x86_64\libjnisgwsqlib.so => app\src\main\jniLibs\x86_64\libjnisgwsqlib.so
+* libs\x86_64\libnex_sdk.so => app\src\main\jniLibs\x86_64\libnex_sdk.so
+* lint.xml => app\lint.xml
+* res\ => app\src\main\res\
+* src\ => app\src\main\java\
+* src\SecuGen\Driver\Fdu08ISensor.java.bak => app\src\main\resources\SecuGen\Driver\Fdu08ISensor.java.bak
+* src\SecuGen\Driver\ISensor.java.bak => app\src\main\resources\SecuGen\Driver\ISensor.java.bak
+* src\SecuGen\Driver\SmartCapture4Fdu08.java.bak => app\src\main\resources\SecuGen\Driver\SmartCapture4Fdu08.java.bak
+* src\SecuGen\FDxSDKPro\JSGFPLib.java.bak => app\src\main\resources\SecuGen\FDxSDKPro\JSGFPLib.java.bak
+
+Next Steps:
+-----------
+You can now build the project. The Gradle project needs network
+connectivity to download dependencies.
+
+Bugs:
+-----
+If for some reason your project does not build, and you determine that
+it is due to a bug or limitation of the Eclipse to Gradle importer,
+please file a bug at http://b.android.com with category
+Component-Tools.
+
+(This import summary is for your information only, and can be deleted
+after import once you are satisfied with the results.)

@@ -65,12 +65,19 @@ export function updateFingerprintSlot(
   return fingerprints.map((f) => (f.id === slotId ? { ...f, ...patch } : f));
 }
 
+export function isFingerprintOnFile(slot: SuspectFingerprintSlot): boolean {
+  return Boolean(
+    slot.printId ||
+      slot.templateDataB64 ||
+      slot.status === 'validated' ||
+      slot.status === 'duplicate'
+  );
+}
+
 function isRequiredFingerprintCaptured(draft: SuspectDossierDraft): boolean {
   const required = draft.fingerprints.filter((f) => f.required);
   if (required.length === 0) return true;
-  return required.every(
-    (f) => f.status === 'validated' || (f.status === 'duplicate' && f.templateDataB64)
-  );
+  return required.every((f) => isFingerprintOnFile(f));
 }
 
 function isFingerprintDuplicateResolved(
@@ -169,7 +176,9 @@ export function stepCompletion(draft: SuspectDossierDraft): Record<string, boole
   const hasRelatives = draft.relatives.some((r) => r.name.trim());
   const hasAssociates = (draft.associates ?? []).some((a) => a.name.trim());
 
-  const hasFingerprint = hasValidatedRequiredFingerprint(draft);
+  const hasFingerprint =
+    hasValidatedRequiredFingerprint(draft) ||
+    draft.fingerprints.some((f) => isFingerprintOnFile(f));
 
   return {
     photo: hasPhoto,

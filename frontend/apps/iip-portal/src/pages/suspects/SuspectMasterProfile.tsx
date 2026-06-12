@@ -42,6 +42,7 @@ export default function SuspectMasterProfile() {
             social_accounts: (data.social_accounts as Record<string, unknown>[]) ?? [],
             relatives: (data.relatives as Record<string, unknown>[]) ?? [],
             photos: (data.photos as Record<string, unknown>[]) ?? [],
+            fingerprints: (data.fingerprints as Record<string, unknown>[]) ?? [],
           });
         }
       })

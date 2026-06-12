@@ -4,6 +4,7 @@ import '../../core/motion/iip_page_route.dart';
 import '../../core/theme/iip_colors.dart';
 import '../suspects/quick_suspect_gallery_screen.dart';
 import '../afis/afis_search_screen.dart';
+import '../afis/afis_tag_fingerprint_screen.dart';
 import 'frs_capture_screen.dart';
 import 'frs_live_screen.dart';
 
@@ -11,14 +12,15 @@ import 'frs_live_screen.dart';
 Future<void> showFrsModeSheet(BuildContext context, {required IipColors colors}) {
   return showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     backgroundColor: colors.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
     builder: (ctx) {
       return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -82,12 +84,27 @@ Future<void> showFrsModeSheet(BuildContext context, {required IipColors colors})
                 colors: colors,
                 icon: Icons.fingerprint_rounded,
                 title: 'Fingerprint search',
-                subtitle: 'Scan a print via SecuGen bridge and search AFIS',
+                subtitle: 'Android + SecuGen HU20 OTG — search AFIS index',
                 onTap: () {
                   Navigator.pop(ctx);
                   Future.delayed(const Duration(milliseconds: 150), () {
                     if (context.mounted) {
                       context.pushSmooth(const AfisSearchScreen());
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              _ModeTile(
+                colors: colors,
+                icon: Icons.back_hand_rounded,
+                title: 'Tag fingerprint to suspect',
+                subtitle: 'Capture print for a dossier — pending web approval',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Future.delayed(const Duration(milliseconds: 150), () {
+                    if (context.mounted) {
+                      context.pushSmooth(const AfisTagFingerprintScreen());
                     }
                   });
                 },

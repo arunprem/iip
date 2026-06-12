@@ -28,13 +28,14 @@ from .routers import fingerprints as fingerprints_router
 from .routers import health as health_router
 from .routers import rag as rag_router
 from .services.face_index import FaceIndexService
-from .services.fingerprint_index import FingerprintIndexService
+from .services.fingerprint_bootstrap import bootstrap_fingerprints_from_db
+from .services.fingerprint_store import get_fingerprint_store
 from .services.face_pipeline import warmup_face_models
 from .settings import get_ml_settings
 
 settings = get_ml_settings()
 _face_index = FaceIndexService()
-_fingerprint_index = FingerprintIndexService()
+_fingerprint_index = get_fingerprint_store()
 logger = get_logger(__name__)
 
 
@@ -50,6 +51,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         await _face_index.ensure_index()
         await _fingerprint_index.ensure_index()
+        if settings.fingerprint_backend == "openafis":
+            await bootstrap_fingerprints_from_db(_fingerprint_index)
     except Exception as exc:
         logger.warning("biometric_index_bootstrap_failed", error=str(exc))
 

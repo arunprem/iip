@@ -2,12 +2,15 @@ import {
   FINGERPRINT_SLOT_DEFS,
   PHOTO_SLOT_DEFS,
   emptyAddress,
+  emptyFingerprintSlot,
   emptyPresentAddress,
 } from './suspectFormDefaults';
 import type {
   ContactType,
+  FingerPosition,
   SocialPlatform,
   SuspectDossierDraft,
+  SuspectFingerprintSlot,
   SuspectPhotoSlot,
 } from './suspectTypes';
 
@@ -132,6 +135,66 @@ function mapPhotos(detail: Record<string, unknown>): SuspectPhotoSlot[] {
   });
 }
 
+export function formatFingerPositionLabel(pos: string): string {
+  return pos
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function slotFromFingerprintRow(
+  row: Record<string, unknown>,
+  def?: { fingerPosition: FingerPosition; label: string; required: boolean }
+): SuspectFingerprintSlot {
+  const fingerPosition = (def?.fingerPosition ??
+    str(row.finger_position).toUpperCase()) as FingerPosition;
+  const templateDataB64 = str(row.template_data) || str(row.templateData) || null;
+  const printId = row.print_id ? str(row.print_id) : null;
+  const onFile = Boolean(templateDataB64 || printId);
+  return {
+    id: str(row.template_id) || crypto.randomUUID(),
+    fingerPosition,
+    label: def?.label ?? formatFingerPositionLabel(fingerPosition),
+    required: def?.required ?? false,
+    printId,
+    templateDataB64: templateDataB64 || null,
+    templateFormat: str(row.template_format) || 'ISO19794-2',
+    templateHash: row.template_hash ? str(row.template_hash) : null,
+    qualityScore: row.quality_score != null ? Number(row.quality_score) : null,
+    deviceModel: row.device_model ? str(row.device_model) : null,
+    status: onFile ? ('validated' as const) : ('empty' as const),
+    errorMessage: null,
+    duplicateMatches: [],
+    duplicateAcknowledged: false,
+  };
+}
+
+function mapFingerprints(detail: Record<string, unknown>): SuspectDossierDraft['fingerprints'] {
+  const rawPrints = Array.isArray(detail.fingerprints) ? detail.fingerprints : [];
+  const byPosition = new Map<string, Record<string, unknown>>();
+  for (const f of rawPrints) {
+    const row = f as Record<string, unknown>;
+    if (row.finger_position) {
+      byPosition.set(str(row.finger_position).toUpperCase(), row);
+    }
+  }
+
+  const slots = FINGERPRINT_SLOT_DEFS.map((def) => {
+    const row = byPosition.get(def.fingerPosition.toUpperCase());
+    return row
+      ? slotFromFingerprintRow(row, def)
+      : emptyFingerprintSlot(def.fingerPosition, def.label, def.required);
+  });
+
+  const known = new Set(FINGERPRINT_SLOT_DEFS.map((d) => d.fingerPosition.toUpperCase()));
+  for (const [pos, row] of byPosition) {
+    if (!known.has(pos)) {
+      slots.push(slotFromFingerprintRow(row));
+    }
+  }
+  return slots;
+}
+
 export function dossierDetailToDraft(detail: Record<string, unknown>): SuspectDossierDraft {
   const identity = (detail.identity as Record<string, unknown>) ?? {};
   const permRow = (detail.address as Record<string, unknown>) ?? {};
@@ -149,22 +212,7 @@ export function dossierDetailToDraft(detail: Record<string, unknown>): SuspectDo
     editingMasterSuspectId: str(detail.master_suspect_id) || undefined,
     editingChildSuspectId: str(detail.suspect_id) || undefined,
     photos: mapPhotos(detail),
-    fingerprints: FINGERPRINT_SLOT_DEFS.map((def) => ({
-      id: crypto.randomUUID(),
-      fingerPosition: def.fingerPosition,
-      label: def.label,
-      required: def.required,
-      printId: null,
-      templateDataB64: null,
-      templateFormat: 'ISO19794-2',
-      templateHash: null,
-      qualityScore: null,
-      deviceModel: null,
-      status: 'empty' as const,
-      errorMessage: null,
-      duplicateMatches: [],
-      duplicateAcknowledged: false,
-    })),
+    fingerprints: mapFingerprints(detail),
     criminalName: str(identity.criminal_name),
     aliasName: str(identity.alias_name),
     gender: str(identity.gender),

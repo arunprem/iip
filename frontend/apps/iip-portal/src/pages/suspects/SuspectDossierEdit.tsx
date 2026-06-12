@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Pencil, Save } from 'lucide-react';
 import { AdminButton } from '../../components/admin/AdminButton';
 import { AdminPageLayout } from '../../components/admin/AdminPageLayout';
@@ -8,6 +8,7 @@ import { SuspectWizardStepper } from '../../components/suspects/SuspectWizardSte
 import { SuspectAddressStep } from '../../components/suspects/steps/SuspectAddressStep';
 import { SuspectContactsStep } from '../../components/suspects/steps/SuspectContactsStep';
 import { SuspectIdentityStep } from '../../components/suspects/steps/SuspectIdentityStep';
+import { SuspectFingerprintStep } from '../../components/suspects/steps/SuspectFingerprintStep';
 import { SuspectPhotoStep } from '../../components/suspects/steps/SuspectPhotoStep';
 import { SuspectRelativesStep } from '../../components/suspects/steps/SuspectRelativesStep';
 import { SuspectReviewStep } from '../../components/suspects/steps/SuspectReviewStep';
@@ -17,17 +18,42 @@ import { indexSubmittedSuspectFace } from '../../api/suspectFaces';
 import { showToast } from '../../stores/toastStore';
 import { WIZARD_STEPS } from './suspectFormDefaults';
 import { dossierDetailToDraft } from './suspectDetailMappers';
-import { hasValidatedFrontPhoto, photosStepBlockedReason, stepCompletion } from './suspectFormUtils';
+import {
+  fingerprintsStepBlockedReason,
+  hasValidatedFrontPhoto,
+  photosStepBlockedReason,
+  stepCompletion,
+} from './suspectFormUtils';
 import type { SuspectDossierDraft, WizardStepId } from './suspectTypes';
 
 function str(v: unknown): string {
   return v != null ? String(v) : '';
 }
 
+const WIZARD_STEP_IDS = new Set<WizardStepId>([
+  'photo',
+  'fingerprint',
+  'identity',
+  'address',
+  'contacts',
+  'social',
+  'relatives',
+  'review',
+]);
+
+function initialEditStep(searchParams: URLSearchParams): WizardStepId {
+  const requested = searchParams.get('step');
+  if (requested && WIZARD_STEP_IDS.has(requested as WizardStepId)) {
+    return requested as WizardStepId;
+  }
+  return 'identity';
+}
+
 export default function SuspectDossierEdit() {
   const { dossierId } = useParams<{ dossierId: string }>();
   const navigate = useNavigate();
-  const [step, setStep] = useState<WizardStepId>('identity');
+  const [searchParams] = useSearchParams();
+  const [step, setStep] = useState<WizardStepId>(() => initialEditStep(searchParams));
   const [draft, setDraft] = useState<SuspectDossierDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -84,6 +110,14 @@ export default function SuspectDossierEdit() {
         return;
       }
     }
+    const fingerprintIndex = WIZARD_STEPS.findIndex((s) => s.id === 'fingerprint');
+    if (targetIndex > fingerprintIndex) {
+      const fpBlock = fingerprintsStepBlockedReason(draft);
+      if (fpBlock) {
+        showToast('warning', fpBlock);
+        return;
+      }
+    }
     const identityIndex = WIZARD_STEPS.findIndex((s) => s.id === 'identity');
     if (targetIndex > identityIndex && !draft.criminalName.trim()) {
       showToast('warning', 'Criminal name is required.');
@@ -99,6 +133,13 @@ export default function SuspectDossierEdit() {
       const block = photosStepBlockedReason(draft);
       if (block) {
         showToast('warning', block);
+        return;
+      }
+    }
+    if (step === 'fingerprint') {
+      const fpBlock = fingerprintsStepBlockedReason(draft);
+      if (fpBlock) {
+        showToast('warning', fpBlock);
         return;
       }
     }
@@ -202,6 +243,25 @@ export default function SuspectDossierEdit() {
             }}
             onLinkDecision={(linkDecision) => patchDraft({ linkDecision })}
             onGeoTagChange={(photoGeoTag) => patchDraft({ photoGeoTag })}
+          />
+        );
+      case 'fingerprint':
+        return (
+          <SuspectFingerprintStep
+            draft={draft}
+            onFingerprintsChange={(fingerprintsOrUpdater) => {
+              setDraft((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      fingerprints:
+                        typeof fingerprintsOrUpdater === 'function'
+                          ? fingerprintsOrUpdater(prev.fingerprints)
+                          : fingerprintsOrUpdater,
+                    }
+                  : prev
+              );
+            }}
           />
         );
       case 'identity':

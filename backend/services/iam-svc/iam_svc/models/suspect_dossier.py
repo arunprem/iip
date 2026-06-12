@@ -339,3 +339,65 @@ class QuickSuspectCapture(Base):
     )
     used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+
+class SuspectFingerprintSubmission(Base):
+    """Mobile field capture awaiting web approval before AFIS indexing."""
+
+    __tablename__ = "suspect_fingerprint_submissions"
+    __table_args__ = {"schema": "intelligence"}
+
+    suspect_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    dossier_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspect_dossiers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    master_suspect_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspect_masters.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    template_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    print_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    finger_position: Mapped[str] = mapped_column(String(30), nullable=False)
+    template_format: Mapped[str] = mapped_column(String(30), default="ISO19794-2", nullable=False)
+    template_data: Mapped[bytes] = mapped_column(nullable=False)
+    template_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    quality_score: Mapped[float | None] = mapped_column(nullable=True)
+    device_model: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    image_data: Mapped[bytes | None] = mapped_column(nullable=True)
+    image_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(String(20), default="MOBILE", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="PENDING", nullable=False)
+    criminal_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    captured_by: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("iam.users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("iam.users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approved_fingerprint_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspect_fingerprints.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    suspect: Mapped["Suspect"] = relationship("Suspect", lazy="selectin")
+    dossier: Mapped["SuspectDossier"] = relationship("SuspectDossier", lazy="selectin")
+

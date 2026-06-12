@@ -316,6 +316,36 @@ export async function confirmRemoveUserOfficeAssignment(details: {
   return result.isConfirmed;
 }
 
+export async function confirmRemoveSuspectFingerprint(details: {
+  fingerLabel: string;
+  criminalName?: string;
+}): Promise<boolean> {
+  const subjectNote = details.criminalName
+    ? `<p class="mt-1 text-iip-text-muted">Subject: <strong>${escapeHtml(details.criminalName)}</strong></p>`
+    : '';
+
+  const result = await Swal.fire({
+    ...swalBase,
+    title: 'Remove fingerprint?',
+    html: `
+      <p>Remove the <strong>${escapeHtml(details.fingerLabel)}</strong> print from this dossier?</p>
+      ${subjectNote}
+      <p class="mt-2 text-amber-600">It will be removed from AFIS search until captured and approved again.</p>
+      <p class="mt-2">This cannot be undone.</p>
+    `,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, remove print',
+    cancelButtonText: 'Cancel',
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#64748b',
+    focusCancel: true,
+    reverseButtons: true,
+  });
+
+  return result.isConfirmed;
+}
+
 export async function confirmClearDossierDraft(details: {
   hasStoredPhotos: boolean;
 }): Promise<boolean> {

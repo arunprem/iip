@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from iam_svc.models.suspect_dossier import Suspect, SuspectAddress, SuspectDossier, SuspectMaster, SuspectPhoto
+import base64
+from iam_svc.models.suspect_dossier import Suspect, SuspectAddress, SuspectDossier, SuspectMaster, SuspectPhoto, SuspectFingerprint
 from iam_svc.services.suspect_address_utils import get_address_by_kind
 
 
@@ -54,6 +55,7 @@ def build_master_profile(
     social_accounts: list[dict] = []
     relatives: list[dict] = []
     photos: list[dict] = []
+    fingerprints: list[dict] = []
 
     for dossier in sorted(dossiers, key=lambda d: d.submitted_at, reverse=True):
         suspect = dossier.suspect
@@ -85,6 +87,8 @@ def build_master_profile(
         draft_id = str(dossier.dossier_draft_id) if dossier.dossier_draft_id else None
         for p in sorted(suspect.photos, key=lambda x: x.sort_order):
             photos.append(_photo_dict(p, tag, dossier_draft_id=draft_id))
+        for f in sorted(suspect.fingerprints or [], key=lambda x: x.sort_order):
+            fingerprints.append(_fingerprint_dict(f, tag))
 
     return {
         "master_suspect_id": str(master.id),
@@ -96,6 +100,7 @@ def build_master_profile(
         "social_accounts": social_accounts,
         "relatives": relatives,
         "photos": photos,
+        "fingerprints": fingerprints,
     }
 
 
@@ -163,6 +168,10 @@ def build_dossier_detail(
             )
             for p in sorted(suspect.photos, key=lambda x: x.sort_order)
         ],
+        "fingerprints": [
+            _fingerprint_dict(f, tag)
+            for f in sorted(suspect.fingerprints or [], key=lambda x: x.sort_order)
+        ],
         "dossier_draft_id": str(dossier.dossier_draft_id) if dossier.dossier_draft_id else None,
     }
 
@@ -179,4 +188,18 @@ def _photo_dict(
         "face_id": str(photo.face_id) if photo.face_id else None,
         "detected_pose": photo.detected_pose,
         "face_detected": photo.face_detected,
+    }
+
+
+def _fingerprint_dict(fp: SuspectFingerprint, tag: dict) -> dict:
+    return {
+        **tag,
+        "template_id": str(fp.template_id),
+        "print_id": str(fp.print_id) if fp.print_id else None,
+        "finger_position": fp.finger_position,
+        "template_format": fp.template_format,
+        "template_data": base64.b64encode(fp.template_data).decode("utf-8"),
+        "template_hash": fp.template_hash,
+        "quality_score": fp.quality_score,
+        "device_model": fp.device_model,
     }

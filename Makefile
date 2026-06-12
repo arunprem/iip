@@ -1,4 +1,4 @@
-.PHONY: setup lint test run build sbom sign e2e docker-up docker-down
+.PHONY: setup lint test run build sbom sign e2e docker-up docker-down openafis-docker nbis-docker
 
 # ─── Bootstrap ────────────────────────────────────────────────────────────────
 setup:
@@ -29,6 +29,18 @@ test-coverage:
 	uv run pytest --cov=backend --cov-report=xml --cov-report=html
 
 # ─── Local Dev ────────────────────────────────────────────────────────────────
+openafis-docker:
+	chmod +x infra/openafis-matcher/scripts/fetch-openafis.sh
+	infra/openafis-matcher/scripts/fetch-openafis.sh
+	docker compose build openafis-matcher
+	docker compose up -d openafis-matcher
+
+nbis-docker:
+	chmod +x infra/nbis-matcher/scripts/fetch-nbis.sh
+	infra/nbis-matcher/scripts/fetch-nbis.sh
+	docker compose build nbis-matcher
+	docker compose up -d nbis-matcher
+
 docker-up:
 	docker-compose up -d
 
@@ -43,8 +55,14 @@ iam-svc-dev:
 		--reload-dir ../../libs/iip-core/iip_core
 
 # ML gateway — LLM chat + face recognition (Analyst Workbench photo search, FRS)
+# Fingerprint 1:N: openafis (ISO) + optional nbis (image) — run make openafis-docker && make nbis-docker
 ml-gateway-dev:
-	cd backend/services/ml-gateway-svc && uv run uvicorn ml_gateway_svc.main:app \
+	cd backend/services/ml-gateway-svc && \
+		FINGERPRINT_BACKEND=openafis \
+		OPENAFIS_TEMPLATES_DIR=$(CURDIR)/data/openafis/templates \
+		NBIS_XYT_DIR=$(CURDIR)/data/nbis/xyt \
+		NBIS_IMAGES_DIR=$(CURDIR)/data/nbis/images \
+		uv run uvicorn ml_gateway_svc.main:app \
 		--host 0.0.0.0 --port 8020 --reload \
 		--reload-dir ml_gateway_svc \
 		--reload-dir ../../libs/iip-core/iip_core \

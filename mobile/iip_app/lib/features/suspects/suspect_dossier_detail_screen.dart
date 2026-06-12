@@ -1,12 +1,17 @@
-import 'dart:typed_data';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/motion/iip_page_route.dart';
+import '../../core/network/api_client.dart';
 import '../../core/theme/iip_colors.dart';
 import '../../models/suspect_dossier_detail.dart';
+import '../../models/suspect_fingerprint_ref.dart';
+import '../../services/secugen_capture.dart';
+import '../afis/afis_fingerprint_repository.dart';
 import '../auth/auth_controller.dart';
 import '../knowledge_graph/knowledge_graph_screen.dart';
 import 'dossier_photo_viewer_screen.dart';
@@ -71,11 +76,40 @@ class _SuspectDossierDetailScreenState extends State<SuspectDossierDetailScreen>
     }
   }
 
+  void _showFingerprintCaptureSheet() {
+    final colors = context.read<AuthController>().colors;
+    final api = context.read<AuthController>().api;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _FingerprintCaptureSheet(
+        colors: colors,
+        api: api,
+        dossierId: _detail!.dossierId,
+        criminalName: _detail!.identity.criminalName,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.watch<AuthController>().colors;
+    final showFab = !_loading && _error == null && _detail != null && Platform.isAndroid;
     return Scaffold(
       backgroundColor: colors.bg,
+      floatingActionButton: showFab
+          ? FloatingActionButton.extended(
+              onPressed: _showFingerprintCaptureSheet,
+              backgroundColor: colors.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.fingerprint_rounded),
+              label: const Text(
+                'Capture print',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            )
+          : null,
       body: _loading
           ? Center(child: CircularProgressIndicator(color: colors.primary))
           : _error != null
@@ -275,6 +309,27 @@ class _DossierBody extends StatelessWidget {
                             _SocialRow(
                               account: detail.socialAccounts[i],
                               colors: colors,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (detail.fingerprints.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _SectionCard(
+                      colors: colors,
+                      title: 'Fingerprint biometrics',
+                      icon: Icons.fingerprint_rounded,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (var i = 0; i < detail.fingerprints.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 12),
+                            _FingerprintRefRow(
+                              fp: detail.fingerprints[i],
+                              colors: colors,
+                              api: repo.api,
                             ),
                           ],
                         ],
@@ -684,6 +739,183 @@ class _SectionCard extends StatelessWidget {
     );
   }
 }
+
+class _FingerprintRefRow extends StatefulWidget {
+  const _FingerprintRefRow({
+    required this.fp,
+    required this.colors,
+    required this.api,
+  });
+
+  final SuspectFingerprintRef fp;
+  final IipColors colors;
+  final ApiClient api;
+
+  @override
+  State<_FingerprintRefRow> createState() => _FingerprintRefRowState();
+}
+
+class _FingerprintRefRowState extends State<_FingerprintRefRow> {
+  Uint8List? _imgBytes;
+  bool _loading = false;
+  bool _error = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImage();
+  }
+
+  Future<void> _loadImage() async {
+    final printId = widget.fp.printId;
+    if (printId == null || printId.isEmpty) {
+      setState(() => _error = true);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = false;
+    });
+    try {
+      final bytes = await widget.api.getBytes('/ml/fingerprints/prints/$printId/image');
+      if (!mounted) return;
+      setState(() {
+        _imgBytes = bytes;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = true;
+        _loading = false;
+      });
+    }
+  }
+
+  String _formatFingerLabel(String raw) {
+    return raw
+        .replaceAll('_', ' ')
+        .toLowerCase()
+        .split(' ')
+        .map((word) => word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1))
+        .join(' ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _formatFingerLabel(widget.fp.fingerPosition);
+    final quality = widget.fp.qualityScore != null ? (widget.fp.qualityScore! * 100).round() : null;
+
+    Widget imageWidget;
+    if (_loading) {
+      imageWidget = Container(
+        width: 50,
+        height: 64,
+        decoration: BoxDecoration(
+          color: widget.colors.border.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        alignment: Alignment.center,
+        child: SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(color: widget.colors.primary, strokeWidth: 1.5),
+        ),
+      );
+    } else if (_error || _imgBytes == null) {
+      imageWidget = Container(
+        width: 50,
+        height: 64,
+        decoration: BoxDecoration(
+          color: widget.colors.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        alignment: Alignment.center,
+        child: Icon(Icons.fingerprint_rounded, color: widget.colors.primary, size: 24),
+      );
+    } else {
+      imageWidget = ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.memory(
+          _imgBytes!,
+          width: 50,
+          height: 64,
+          fit: BoxFit.cover,
+        ),
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        imageWidget,
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: widget.colors.text,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (quality != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: (quality >= 80
+                                ? Colors.green
+                                : quality >= 50
+                                    ? Colors.amber
+                                    : Colors.red)
+                            .withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$quality% Quality',
+                        style: TextStyle(
+                          color: quality >= 80
+                              ? Colors.green
+                              : quality >= 50
+                                  ? Colors.amber
+                                  : Colors.red,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'ISO 19794-2 FMR Template',
+                style: TextStyle(color: widget.colors.textMuted, fontSize: 11),
+              ),
+              if (widget.fp.deviceModel != null && widget.fp.deviceModel!.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'Device: ${widget.fp.deviceModel}',
+                  style: TextStyle(
+                    color: widget.colors.textMuted.withValues(alpha: 0.8),
+                    fontSize: 10,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 
 class _FactRow extends StatelessWidget {
   const _FactRow({required this.label, required this.colors, this.value});
@@ -1113,6 +1345,440 @@ class _ErrorState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet for capturing a fingerprint and submitting it for approval.
+class _FingerprintCaptureSheet extends StatefulWidget {
+  const _FingerprintCaptureSheet({
+    required this.colors,
+    required this.api,
+    required this.dossierId,
+    required this.criminalName,
+  });
+
+  final IipColors colors;
+  final ApiClient api;
+  final String dossierId;
+  final String criminalName;
+
+  @override
+  State<_FingerprintCaptureSheet> createState() => _FingerprintCaptureSheetState();
+}
+
+class _FingerprintCaptureSheetState extends State<_FingerprintCaptureSheet> {
+  late final AfisFingerprintRepository _repo;
+
+  SecuGenDeviceStatus? _deviceStatus;
+  String _fingerPosition = 'RIGHT_THUMB';
+  bool _checkingDevice = false;
+  bool _busy = false;
+  String? _error;
+  String? _success;
+
+  static const _fingerPositions = [
+    ('RIGHT_THUMB', 'Right thumb'),
+    ('RIGHT_INDEX', 'Right index'),
+    ('RIGHT_MIDDLE', 'Right middle'),
+    ('RIGHT_RING', 'Right ring'),
+    ('RIGHT_LITTLE', 'Right little'),
+    ('LEFT_THUMB', 'Left thumb'),
+    ('LEFT_INDEX', 'Left index'),
+    ('LEFT_MIDDLE', 'Left middle'),
+    ('LEFT_RING', 'Left ring'),
+    ('LEFT_LITTLE', 'Left little'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _repo = AfisFingerprintRepository(widget.api);
+    _refreshDeviceStatus();
+  }
+
+  Future<void> _refreshDeviceStatus() async {
+    setState(() => _checkingDevice = true);
+    try {
+      final status = await SecuGenCapture.getStatus();
+      if (!mounted) return;
+      setState(() {
+        _deviceStatus = status;
+        _checkingDevice = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _deviceStatus = const SecuGenDeviceStatus(
+          sdkInstalled: false,
+          usbHostSupported: false,
+          deviceAttached: false,
+          ready: false,
+          message: 'Could not read scanner status.',
+        );
+        _checkingDevice = false;
+      });
+    }
+  }
+
+  Future<void> _captureAndSubmit() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+      _success = null;
+    });
+
+    try {
+      final captured = await SecuGenCapture.captureTemplate(
+        fingerPosition: _fingerPosition,
+      );
+      final submission = await _repo.submitFingerprint(
+        dossierId: widget.dossierId,
+        fingerPosition: captured.fingerPosition,
+        templateBytes: captured.templateBytes,
+        templateFormat: captured.templateFormat,
+        qualityScore: captured.qualityScore,
+        deviceModel: captured.deviceModel,
+        imageBytes: captured.imageBytes,
+        imageWidth: captured.imageWidth,
+        imageHeight: captured.imageHeight,
+      );
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _success =
+            'Fingerprint submitted for ${widget.criminalName}.\n'
+            'Status: ${submission.status} — awaiting supervisor approval on the web portal.';
+      });
+      await _refreshDeviceStatus();
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message ?? 'Fingerprint capture failed (${e.code}).';
+        _busy = false;
+      });
+      await _refreshDeviceStatus();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _busy = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Submit failed. Check scanner connection and network.';
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+    final ready = _deviceStatus?.ready ?? false;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(
+          top: BorderSide(color: colors.primary.withValues(alpha: 0.3), width: 2),
+        ),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        12,
+        20,
+        20 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag handle
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: colors.border,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Title row
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.fingerprint_rounded, color: colors.primary, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'CAPTURE FINGERPRINT',
+                      style: TextStyle(
+                        color: colors.text,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.criminalName,
+                      style: TextStyle(
+                        color: colors.textMuted,
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: Icon(Icons.close_rounded, color: colors.textMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Scanner status
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _checkingDevice
+                  ? colors.surfaceHover
+                  : ready
+                      ? colors.primary.withValues(alpha: 0.08)
+                      : colors.warning.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _checkingDevice
+                    ? colors.border
+                    : ready
+                        ? colors.primary.withValues(alpha: 0.4)
+                        : colors.warning.withValues(alpha: 0.4),
+              ),
+            ),
+            child: _checkingDevice
+                ? Row(
+                    children: [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('Checking scanner…', style: TextStyle(color: colors.text)),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Icon(
+                        ready ? Icons.check_circle_rounded : Icons.usb_rounded,
+                        color: ready ? colors.success : colors.warning,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          ready
+                              ? 'Scanner ready${_deviceStatus?.deviceModel != null ? ' (${_deviceStatus!.deviceModel})' : ''}'
+                              : _deviceStatus?.message ?? 'Scanner not connected',
+                          style: TextStyle(color: colors.text, fontSize: 13),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _refreshDeviceStatus,
+                        child: Icon(Icons.refresh_rounded, color: colors.textMuted, size: 20),
+                      ),
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 16),
+
+          // Finger position selector
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Finger position',
+                style: TextStyle(
+                  color: colors.text,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _fingerPosition,
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: colors.surfaceHover,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: colors.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: colors.border),
+                  ),
+                ),
+                dropdownColor: colors.surface,
+                style: TextStyle(color: colors.text, fontSize: 14),
+                items: _fingerPositions
+                    .map(
+                      (e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)),
+                    )
+                    .toList(),
+                onChanged: _busy
+                    ? null
+                    : (v) {
+                        if (v != null) setState(() => _fingerPosition = v);
+                      },
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Capture button
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: (_busy || !ready) ? null : _captureAndSubmit,
+              icon: _busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.fingerprint_rounded),
+              label: Text(
+                _busy ? 'Capturing…' : 'Scan & submit',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                backgroundColor: colors.primary,
+              ),
+            ),
+          ),
+
+          // Error message
+          if (_error != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.error.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colors.error.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.error_outline_rounded, color: colors.error, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: colors.error, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Success message
+          if (_success != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.success.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colors.success.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.check_circle_outline_rounded, color: colors.success, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _success!,
+                      style: TextStyle(color: colors.text, fontSize: 13, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => setState(() {
+                      _success = null;
+                      _error = null;
+                    }),
+                    style: FilledButton.styleFrom(backgroundColor: colors.primary),
+                    child: const Text('Scan another'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+
+          // Info notice (only when no success/error)
+          if (_success == null && _error == null) ...[
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline_rounded, color: colors.textMuted, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Fingerprint will be submitted for supervisor approval before being tagged to this profile.',
+                    style: TextStyle(
+                      color: colors.textMuted,
+                      fontSize: 11,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }

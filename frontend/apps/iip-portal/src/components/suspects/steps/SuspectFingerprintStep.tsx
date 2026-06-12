@@ -1,19 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { AlertCircle, CheckCircle2, Fingerprint, Loader2, RefreshCw, Upload, Usb } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Fingerprint,
+  Loader2,
+  RefreshCw,
+  Trash2,
+  Upload,
+  Usb,
+} from 'lucide-react';
 import {
   captureFingerprintFromBridge,
   fetchFingerprintBridgeStatus,
   ingestSuspectFingerprint,
   readFileAsBase64,
+  removeSuspectDossierFingerprint,
   type FingerprintBridgeStatus,
 } from '../../../api/suspectFingerprints';
 import { extractApiErrorMessage } from '../../../utils/apiMessages';
+import { confirmRemoveSuspectFingerprint } from '../../../utils/confirmDialog';
 import type { SuspectDossierDraft, SuspectFingerprintSlot } from '../../../pages/suspects/suspectTypes';
 import { FINGERPRINT_SLOT_DEFS } from '../../../pages/suspects/suspectFormDefaults';
-import { updateFingerprintSlot } from '../../../pages/suspects/suspectFormUtils';
+import { isFingerprintOnFile, updateFingerprintSlot } from '../../../pages/suspects/suspectFormUtils';
 import { AdminButton } from '../../admin/AdminButton';
 import { showToast } from '../../../stores/toastStore';
+import { FingerprintImagePreview } from '../FingerprintImagePreview';
 
 type FingerprintsUpdater =
   | SuspectFingerprintSlot[]
@@ -34,6 +46,7 @@ export function SuspectFingerprintStep({
 }: SuspectFingerprintStepProps) {
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [capturingSlotId, setCapturingSlotId] = useState<string | null>(null);
+  const [removingSlotId, setRemovingSlotId] = useState<string | null>(null);
   const [bridgeStatus, setBridgeStatus] = useState<FingerprintBridgeStatus | null>(null);
   const [bridgeChecking, setBridgeChecking] = useState(true);
 
@@ -150,9 +163,43 @@ export function SuspectFingerprintStep({
     }
   };
 
-  const capturedCount = draft.fingerprints.filter(
-    (f) => f.status === 'validated' || f.status === 'duplicate'
-  ).length;
+  const onFilePrints = draft.fingerprints.filter(isFingerprintOnFile);
+  const capturedCount = onFilePrints.length;
+
+  const clearSlot = (slotId: string) => {
+    patchSlots(slotId, {
+      status: 'empty',
+      printId: null,
+      templateDataB64: null,
+      templateHash: null,
+      qualityScore: null,
+      deviceModel: null,
+      duplicateMatches: [],
+      duplicateAcknowledged: false,
+      errorMessage: null,
+    });
+  };
+
+  const handleRemovePrint = async (slot: SuspectFingerprintSlot) => {
+    const confirmed = await confirmRemoveSuspectFingerprint({
+      fingerLabel: slot.label,
+      criminalName: draft.criminalName.trim() || undefined,
+    });
+    if (!confirmed) return;
+
+    setRemovingSlotId(slot.id);
+    try {
+      if (draft.editingDossierId && slot.printId) {
+        await removeSuspectDossierFingerprint(draft.editingDossierId, slot.printId);
+        showToast('success', `${slot.label} removed from dossier and AFIS index.`);
+      }
+      clearSlot(slot.id);
+    } catch {
+      /* API surfaces errors */
+    } finally {
+      setRemovingSlotId(null);
+    }
+  };
 
   const bridgeOffline = !bridgeChecking && bridgeStatus && !bridgeStatus.ok;
   const macNoSdk =
@@ -228,7 +275,7 @@ export function SuspectFingerprintStep({
       <div className="dossier-photo-step__toolbar">
         <p className="dossier-photo-step__toolbar-meta text-sm text-iip-text-muted">
           Scan calls a local service on port <code>17890</code> (not the browser USB stack). On Mac,
-          use mock bridge or <strong>Upload .bin</strong>.
+          use mock bridge or <strong>Upload .bin</strong>. Mobile-approved prints also appear below.
         </p>
         <div className="dossier-photo-step__count">
           <span
@@ -237,16 +284,96 @@ export function SuspectFingerprintStep({
               capturedCount > 0 ? 'dossier-photo-step__pill--ok' : 'dossier-photo-step__pill--req',
             ].join(' ')}
           >
-            {capturedCount} captured
+            {capturedCount} on file
           </span>
         </div>
       </div>
+
+      {onFilePrints.length > 0 ? (
+        <div className="mb-6 space-y-3">
+          <p className="text-xs font-semibold text-iip-text uppercase tracking-wide">
+            On file — approved &amp; searchable
+          </p>
+          <div className="grid grid-cols-1 gap-3">
+            {onFilePrints.map((slot) => {
+              const quality =
+                slot.qualityScore != null ? Math.round(slot.qualityScore * 100) : null;
+              const busy = removingSlotId === slot.id;
+              return (
+                <div
+                  key={`on-file-${slot.id}`}
+                  className="flex items-start gap-4 p-4 rounded-xl border border-iip-border bg-iip-bg/40 shadow-sm"
+                >
+                  <FingerprintImagePreview
+                    printId={slot.printId ?? ''}
+                    altText={slot.label}
+                    className="w-14 h-18 object-cover rounded border border-iip-border bg-iip-bg shrink-0"
+                    iconSize={24}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-bold text-iip-text truncate">{slot.label}</p>
+                      {quality !== null ? (
+                        <span
+                          className={[
+                            'text-[10px] font-semibold px-2 py-0.5 rounded-full',
+                            quality >= 80
+                              ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                              : quality >= 50
+                                ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                                : 'bg-red-500/10 text-red-600 border border-red-500/20',
+                          ].join(' ')}
+                        >
+                          {quality}% Quality
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-xs text-iip-text-muted mt-1 font-medium">
+                      ISO 19794-2 FMR Template
+                    </p>
+                    {slot.deviceModel ? (
+                      <p className="text-[11px] text-iip-text-muted/80 mt-0.5 truncate font-mono">
+                        Device: {slot.deviceModel}
+                      </p>
+                    ) : null}
+                    <div className="flex items-center gap-1.5 mt-2 text-[11px] text-emerald-600 font-semibold">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                      </span>
+                      <span>Active &amp; Searchable</span>
+                    </div>
+                  </div>
+                  <AdminButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 text-red-600 hover:text-red-700"
+                    disabled={busy}
+                    onClick={() => void handleRemovePrint(slot)}
+                  >
+                    {busy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    Remove
+                  </AdminButton>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <p className="mb-4 text-sm text-iip-text-muted">
+          No fingerprints on file yet. Capture below or approve a mobile field submission.
+        </p>
+      )}
+
+      <p className="text-xs font-semibold text-iip-text uppercase tracking-wide mb-3">
+        Capture slots
+      </p>
 
       <div className="dossier-fingerprint-grid">
         {draft.fingerprints.map((slot) => {
           const def = slotDef(slot);
           const busy = capturingSlotId === slot.id || slot.status === 'capturing';
-          const done = slot.status === 'validated' || slot.status === 'duplicate';
+          const done = isFingerprintOnFile(slot);
 
           return (
             <div key={slot.id} className="dossier-fingerprint-slot">
@@ -356,21 +483,15 @@ export function SuspectFingerprintStep({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={busy}
-                    onClick={() =>
-                      patchSlots(slot.id, {
-                        status: 'empty',
-                        printId: null,
-                        templateDataB64: null,
-                        templateHash: null,
-                        qualityScore: null,
-                        duplicateMatches: [],
-                        duplicateAcknowledged: false,
-                        errorMessage: null,
-                      })
-                    }
+                    disabled={busy || removingSlotId === slot.id}
+                    onClick={() => void handleRemovePrint(slot)}
                   >
-                    Clear
+                    {removingSlotId === slot.id ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={14} />
+                    )}
+                    Remove
                   </AdminButton>
                 ) : null}
               </div>

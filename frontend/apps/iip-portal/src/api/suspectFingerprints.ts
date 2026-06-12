@@ -46,6 +46,9 @@ export async function ingestSuspectFingerprint(params: {
   qualityScore?: number;
   deviceModel?: string;
   replacePrintId?: string;
+  imageDataB64?: string;
+  imageWidth?: number;
+  imageHeight?: number;
 }): Promise<FingerprintIngestResult> {
   const res = await apiClient.post<FingerprintIngestResult>(
     '/ml/fingerprints/ingest',
@@ -60,6 +63,9 @@ export async function ingestSuspectFingerprint(params: {
       qualityScore: params.qualityScore,
       deviceModel: params.deviceModel,
       replacePrintId: params.replacePrintId,
+      imageDataB64: params.imageDataB64,
+      imageWidth: params.imageWidth,
+      imageHeight: params.imageHeight,
     },
     { skipSuccessToast: true, timeout: 60_000 }
   );
@@ -84,6 +90,9 @@ export async function indexSubmittedSuspectFingerprint(params: {
   criminalName: string;
   qualityScore?: number;
   deviceModel?: string;
+  imageDataB64?: string;
+  imageWidth?: number;
+  imageHeight?: number;
 }): Promise<IndexSubmittedFingerprintResponse> {
   const res = await apiClient.post<IndexSubmittedFingerprintResponse>(
     '/ml/fingerprints/index-submitted',
@@ -98,6 +107,9 @@ export async function indexSubmittedSuspectFingerprint(params: {
       criminalName: params.criminalName,
       qualityScore: params.qualityScore,
       deviceModel: params.deviceModel,
+      imageDataB64: params.imageDataB64,
+      imageWidth: params.imageWidth,
+      imageHeight: params.imageHeight,
     },
     { skipSuccessToast: true }
   );
@@ -110,6 +122,36 @@ export async function discardSuspectDraftFingerprints(dossierDraftId: string): P
     skipToast: true,
   });
 }
+
+export async function removeSuspectDossierFingerprint(
+  dossierId: string,
+  printId: string
+): Promise<void> {
+  await apiClient.delete(`/intelligence/suspect-dossiers/${dossierId}/fingerprints/${printId}`);
+}
+
+export async function fetchFingerprintPreviewDataUrl(
+  printId: string
+): Promise<string> {
+  const res = await apiClient.get<Blob>(`/ml/fingerprints/prints/${printId}/image`, {
+    responseType: 'blob',
+    skipSuccessToast: true,
+    skipToast: true,
+    timeout: 30_000,
+  });
+  
+  // Custom local conversion of blob to data URL
+  if (!(res.data instanceof Blob) || res.data.size === 0) {
+    throw new Error('Empty image response');
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(res.data);
+  });
+}
+
 
 /** Local SecuGen / FDx bridge — returns ISO template bytes as base64. */
 export interface FingerprintBridgeCapture {

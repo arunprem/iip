@@ -67,13 +67,62 @@ class MlGatewaySettings(BaseServiceSettings):
     )
     suspect_photos_prefix: str = Field(default="suspect-photos")
 
+    fingerprint_backend: str = Field(
+        default="openafis",
+        description="Fingerprint 1:N backend: openafis (ISO templates on disk) or elasticsearch (legacy)",
+    )
+    openafis_templates_dir: str = Field(
+        default="data/openafis/templates",
+        description="Directory for {print_id}.iso templates used by OpenAFIS matcher",
+    )
+    openafis_matcher_bin: str = Field(
+        default="",
+        description="Path to iip-openafis-identify binary; empty = in-process minutiae fallback",
+    )
+    openafis_min_score: int = Field(
+        default=40,
+        description="OpenAFIS minimum match score 0-100 (40 ≈ 40% similarity)",
+    )
+
     fingerprint_index_name: str = Field(default="iip-suspect-fingerprints")
     fingerprint_embedding_dims: int = Field(default=512)
-    fingerprint_identify_min_cosine: float = Field(default=0.82)
-    fingerprint_duplicate_min_cosine: float = Field(default=0.78)
+    fingerprint_identify_min_cosine: float = Field(
+        default=0.12,
+        description="Min similarity for field identify when finger position is known",
+    )
+    fingerprint_identify_min_cosine_any_finger: float = Field(
+        default=0.40,
+        description="Min similarity for identify without finger position (avoids cross-finger false positives)",
+    )
+    fingerprint_duplicate_min_cosine: float = Field(default=0.35)
     fingerprint_match_min_gap: float = Field(default=0.04)
-    fingerprint_match_high_confidence_cosine: float = Field(default=0.88)
+    fingerprint_match_high_confidence_cosine: float = Field(default=0.82)
     fingerprint_search_k: int = Field(default=8)
+
+    nbis_xyt_dir: str = Field(
+        default="data/nbis/xyt",
+        description="NBIS gallery minutiae (.xyt) per print_id",
+    )
+    nbis_images_dir: str = Field(
+        default="data/nbis/images",
+        description="Optional raw grayscale captures for NBIS re-processing",
+    )
+    nbis_container: str = Field(
+        default="iip-nbis-matcher",
+        description="Docker container name for mindtct/bozorth3",
+    )
+    nbis_cli_path: str = Field(
+        default="",
+        description="Host path to iip-nbis-cli when not using Docker",
+    )
+    nbis_min_score: int = Field(
+        default=35,
+        description="NBIS bozorth3 minimum score (typical match threshold 35–50)",
+    )
+    nbis_score_max: int = Field(
+        default=120,
+        description="Normalize bozorth3 score to 0–1 similarity for API responses",
+    )
 
 
 @lru_cache(maxsize=1)

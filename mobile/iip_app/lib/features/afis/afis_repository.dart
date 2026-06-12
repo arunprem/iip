@@ -12,15 +12,25 @@ class AfisRepository {
   Future<AfisMatchResult> identifyFingerprint(
     Uint8List templateBytes, {
     String? fingerPosition,
+    String matchEngine = 'openafis',
+    Uint8List? imageBytes,
+    int? imageWidth,
+    int? imageHeight,
   }) async {
     final json = await _api.postJsonMl(
       '/fingerprints/identify',
       {
         'templateDataB64': base64Encode(templateBytes),
+        'matchEngine': matchEngine,
         if (fingerPosition != null && fingerPosition.isNotEmpty)
           'fingerPosition': fingerPosition,
+        if (imageBytes != null && imageBytes.isNotEmpty) ...{
+          'imageDataB64': base64Encode(imageBytes),
+          if (imageWidth != null) 'imageWidth': imageWidth,
+          if (imageHeight != null) 'imageHeight': imageHeight,
+        },
       },
-      timeout: const Duration(seconds: 30),
+      timeout: const Duration(seconds: 60),
     );
     final result = AfisMatchResult.fromJson(json);
     await Future.wait(

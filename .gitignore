@@ -47,5 +47,8 @@ pnpm-debug.log*
 cosign.key
 sbom.json
 
+# OpenAFIS vendored source (fetched by scripts/fetch-openafis.sh)
+infra/openafis-matcher/vendor/
+
 # Graphify
 graphify-out/

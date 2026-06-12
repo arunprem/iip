@@ -690,6 +690,28 @@ class SuspectDossierRepository:
         await self.session.flush()
         return dossier
 
+    async def delete_fingerprint(
+        self,
+        dossier_id: uuid.UUID,
+        *,
+        print_id: uuid.UUID | None = None,
+        template_id: uuid.UUID | None = None,
+    ) -> SuspectFingerprint | None:
+        if print_id is None and template_id is None:
+            return None
+        stmt = select(SuspectFingerprint).where(SuspectFingerprint.dossier_id == dossier_id)
+        if print_id is not None:
+            stmt = stmt.where(SuspectFingerprint.print_id == print_id)
+        else:
+            stmt = stmt.where(SuspectFingerprint.template_id == template_id)
+        result = await self.session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        await self.session.delete(row)
+        await self.session.flush()
+        return row
+
     async def find_master_by_name(self, name: str) -> SuspectMaster | None:
         needle = name.strip().lower()
         if not needle:
@@ -1438,6 +1460,7 @@ class SuspectDossierRepository:
         page_size: int = 50,
         q: str | None = None,
         office_id: uuid.UUID | None = None,
+        office_ids: list[uuid.UUID] | None = None,
         cross_unit: bool = False,
     ) -> tuple[list[SuspectDossier], int]:
         stmt = (
@@ -1450,9 +1473,13 @@ class SuspectDossierRepository:
         )
         count_stmt = select(func.count()).select_from(SuspectDossier)
 
-        if not cross_unit and office_id:
-            stmt = stmt.where(SuspectDossier.office_id == office_id)
-            count_stmt = count_stmt.where(SuspectDossier.office_id == office_id)
+        if not cross_unit:
+            if office_ids:
+                stmt = stmt.where(SuspectDossier.office_id.in_(office_ids))
+                count_stmt = count_stmt.where(SuspectDossier.office_id.in_(office_ids))
+            elif office_id:
+                stmt = stmt.where(SuspectDossier.office_id == office_id)
+                count_stmt = count_stmt.where(SuspectDossier.office_id == office_id)
 
         if q and q.strip():
             filters, _ = _dossier_search_filters(q)
@@ -1475,6 +1502,7 @@ class SuspectDossierRepository:
                 selectinload(SuspectDossier.suspect).selectinload(Suspect.relatives),
                 selectinload(SuspectDossier.suspect).selectinload(Suspect.associates),
                 selectinload(SuspectDossier.suspect).selectinload(Suspect.photos),
+                selectinload(SuspectDossier.suspect).selectinload(Suspect.fingerprints),
             )
             .where(SuspectDossier.id == dossier_id)
         )

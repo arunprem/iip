@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { Fingerprint } from 'lucide-react';
 import {
   FieldPair,
   FieldRow,
@@ -11,6 +12,7 @@ import {
   shortRefId,
 } from './suspectReportParts';
 import { SuspectDossierPhotoThumb } from '../SuspectDossierPhotoThumb';
+import { FingerprintImagePreview } from '../FingerprintImagePreview';
 
 export interface DossierReportDetail {
   dossier_id: string;
@@ -28,6 +30,7 @@ export interface DossierReportDetail {
   social_accounts?: Record<string, unknown>[];
   relatives?: Record<string, unknown>[];
   photos?: Record<string, unknown>[];
+  fingerprints?: Record<string, unknown>[];
 }
 
 function str(v: unknown): string {
@@ -167,7 +170,82 @@ export function SuspectDossierReportView({
         </div>
       </ReportSection>
 
-      <ReportSection number="II" title="Personal particulars" onEdit={editHref ? undefined : editAction}>
+      <ReportSection number="II" title="Fingerprint biometrics">
+        {editHref && (
+          <p className="mb-3 font-sans text-xs">
+            <Link
+              to={`${editHref}?step=fingerprint`}
+              className="text-iip-primary font-medium hover:underline"
+            >
+              Manage fingerprints →
+            </Link>
+          </p>
+        )}
+        {detail.fingerprints && detail.fingerprints.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {detail.fingerprints.map((f, i) => {
+              const pos = str(f.finger_position)
+                .replace(/_/g, ' ')
+                .toLowerCase()
+                .replace(/\b\w/g, (c) => c.toUpperCase());
+              const quality =
+                f.quality_score != null ? Math.round(Number(f.quality_score) * 100) : null;
+              const device = f.device_model ? str(f.device_model) : null;
+
+              return (
+                <div
+                  key={str(f.print_id) || str(f.template_id) || i}
+                  className="flex items-start gap-4 p-4 rounded-xl border border-iip-border bg-iip-bg/40 hover:bg-iip-bg/70 transition-colors shadow-sm"
+                >
+                  <FingerprintImagePreview
+                    printId={str(f.print_id)}
+                    altText={pos}
+                    className="w-14 h-18 object-cover rounded border border-iip-border bg-iip-bg shrink-0"
+                    iconSize={28}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-bold text-iip-text truncate">{pos}</p>
+                      {quality !== null && (
+                        <span
+                          className={[
+                            'text-[10px] font-semibold px-2 py-0.5 rounded-full',
+                            quality >= 80
+                              ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                              : quality >= 50
+                                ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                                : 'bg-red-500/10 text-red-600 border border-red-500/20',
+                          ].join(' ')}
+                        >
+                          {quality}% Quality
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-iip-text-muted mt-1 font-medium">
+                      ISO 19794-2 FMR Template
+                    </p>
+                    {device && (
+                      <p className="text-[11px] text-iip-text-muted/80 mt-0.5 truncate font-mono">
+                        Device: {device}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-1.5 mt-2 text-[11px] text-emerald-600 font-semibold">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                      </span>
+                      <span>Active & Searchable</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="suspect-report__empty">No fingerprints on file.</p>
+        )}
+      </ReportSection>
+
+      <ReportSection number="III" title="Personal particulars" onEdit={editHref ? undefined : editAction}>
         <FieldTable>
           <FieldRow label="Criminal / legal name" value={str(identity.criminal_name)} colSpan />
           <FieldPair
@@ -193,7 +271,7 @@ export function SuspectDossierReportView({
         </FieldTable>
       </ReportSection>
 
-      <ReportSection number="III" title="Address & location" onEdit={editHref ? undefined : editAction}>
+      <ReportSection number="IV" title="Address & location" onEdit={editHref ? undefined : editAction}>
         <div className="space-y-6">
           {!hasDifferentPresent && (
             <FieldTable>
@@ -205,7 +283,7 @@ export function SuspectDossierReportView({
         </div>
       </ReportSection>
 
-      <ReportSection number="IV" title="Contact details" onEdit={editHref ? undefined : editAction}>
+      <ReportSection number="V" title="Contact details" onEdit={editHref ? undefined : editAction}>
         {(detail.contacts ?? []).length === 0 ? (
           <p className="suspect-report__empty">None recorded.</p>
         ) : (
@@ -228,7 +306,7 @@ export function SuspectDossierReportView({
         )}
       </ReportSection>
 
-      <ReportSection number="V" title="Digital footprint" onEdit={editHref ? undefined : editAction}>
+      <ReportSection number="VI" title="Digital footprint" onEdit={editHref ? undefined : editAction}>
         {(detail.social_accounts ?? []).length === 0 ? (
           <p className="suspect-report__empty">None recorded.</p>
         ) : (
@@ -252,7 +330,7 @@ export function SuspectDossierReportView({
       </ReportSection>
 
       <ReportSection
-        number="VI"
+        number="VII"
         title="Associates & relatives"
         onEdit={editHref ? undefined : editAction}
       >

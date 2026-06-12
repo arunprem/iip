@@ -1,3 +1,6 @@
+import 'package:flutter/services.dart';
+import 'suspect_fingerprint_ref.dart';
+
 class SuspectDossierDetail {
   SuspectDossierDetail({
     required this.dossierId,
@@ -16,6 +19,7 @@ class SuspectDossierDetail {
     this.socialAccounts = const [],
     this.relatives = const [],
     this.photos = const [],
+    this.fingerprints = const [],
     this.canEdit = false,
     this.canViewMaster = false,
   });
@@ -48,6 +52,7 @@ class SuspectDossierDetail {
           _listOf(json['social_accounts'] ?? json['socialAccounts'], SuspectSocialAccount.fromJson),
       relatives: _listOf(json['relatives'], SuspectRelative.fromJson),
       photos: _listOf(json['photos'], SuspectPhotoRef.fromJson),
+      fingerprints: _listOf(json['fingerprints'], SuspectFingerprintRef.fromJson),
       canEdit: (json['can_edit'] ?? json['canEdit']) as bool? ?? false,
       canViewMaster: (json['can_view_master'] ?? json['canViewMaster']) as bool? ?? false,
     );
@@ -69,6 +74,7 @@ class SuspectDossierDetail {
   final List<SuspectSocialAccount> socialAccounts;
   final List<SuspectRelative> relatives;
   final List<SuspectPhotoRef> photos;
+  final List<SuspectFingerprintRef> fingerprints;
   final bool canEdit;
   final bool canViewMaster;
 
@@ -207,7 +213,6 @@ class SuspectAddressBlock {
       (pincode?.isNotEmpty ?? false) ||
       (district?.isNotEmpty ?? false);
 }
-
 class SuspectContact {
   SuspectContact({required this.contactType, required this.value});
 

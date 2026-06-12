@@ -50,6 +50,7 @@ from .routers import offices as offices_router
 from .routers import ranks as ranks_router
 from .routers import unit_types as unit_types_router
 from .routers import office_lookups as office_lookups_router
+from .routers import fingerprint_submissions as fingerprint_submissions_router
 from .routers import suspect_dossiers as suspect_dossiers_router
 from .routers import knowledge_graph as knowledge_graph_router
 
@@ -114,9 +115,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         used         BOOLEAN NOT NULL DEFAULT FALSE,
                         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                         updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    );
-                    CREATE INDEX IF NOT EXISTS idx_quick_suspects_captured_by ON intelligence.quick_suspect_captures (captured_by);
-                    CREATE INDEX IF NOT EXISTS idx_quick_suspects_used ON intelligence.quick_suspect_captures (used);
+                    )
+                """))
+                await conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_quick_suspects_captured_by ON intelligence.quick_suspect_captures (captured_by)
+                """))
+                await conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_quick_suspects_used ON intelligence.quick_suspect_captures (used)
                 """))
             logger.info("Quick suspect captures database table verified")
         except Exception as exc:
@@ -141,20 +146,80 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                         updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                         UNIQUE (dossier_id, template_id)
-                    );
+                    )
+                """))
+                await conn.execute(text("""
                     CREATE INDEX IF NOT EXISTS idx_suspect_fingerprints_suspect
-                        ON intelligence.suspect_fingerprints (suspect_id);
+                        ON intelligence.suspect_fingerprints (suspect_id)
+                """))
+                await conn.execute(text("""
                     CREATE INDEX IF NOT EXISTS idx_suspect_fingerprints_print
                         ON intelligence.suspect_fingerprints (print_id)
-                        WHERE print_id IS NOT NULL;
+                        WHERE print_id IS NOT NULL
+                """))
+                await conn.execute(text("""
                     CREATE INDEX IF NOT EXISTS idx_suspect_fingerprints_hash
-                        ON intelligence.suspect_fingerprints (template_hash);
+                        ON intelligence.suspect_fingerprints (template_hash)
+                """))
+                await conn.execute(text("""
                     ALTER TABLE intelligence.suspect_fingerprints
-                        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+                        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 """))
             logger.info("Suspect fingerprints database table verified")
         except Exception as exc:
             logger.error("suspect_fingerprints_table_init_failed", error=str(exc))
+
+        try:
+            async with _engine.begin() as conn:
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS intelligence.suspect_fingerprint_submissions (
+                        id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                        suspect_id              UUID NOT NULL REFERENCES intelligence.suspects(id) ON DELETE CASCADE,
+                        dossier_id              UUID NOT NULL REFERENCES intelligence.suspect_dossiers(id) ON DELETE CASCADE,
+                        master_suspect_id       UUID NOT NULL REFERENCES intelligence.suspect_masters(id) ON DELETE CASCADE,
+                        template_id             UUID NOT NULL,
+                        print_id                UUID,
+                        finger_position         VARCHAR(30) NOT NULL,
+                        template_format         VARCHAR(30) NOT NULL DEFAULT 'ISO19794-2',
+                        template_data           BYTEA NOT NULL,
+                        template_hash           VARCHAR(64) NOT NULL,
+                        quality_score           REAL,
+                        device_model            VARCHAR(60),
+                        source                  VARCHAR(20) NOT NULL DEFAULT 'MOBILE',
+                        status                  VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                        criminal_name           VARCHAR(255),
+                        captured_by             UUID REFERENCES iam.users(id) ON DELETE SET NULL,
+                        captured_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        reviewed_by             UUID REFERENCES iam.users(id) ON DELETE SET NULL,
+                        reviewed_at             TIMESTAMPTZ,
+                        review_notes            TEXT,
+                        approved_fingerprint_id UUID REFERENCES intelligence.suspect_fingerprints(id) ON DELETE SET NULL,
+                        created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """))
+                await conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_fp_submissions_status
+                        ON intelligence.suspect_fingerprint_submissions (status, captured_at DESC)
+                """))
+                await conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_fp_submissions_dossier
+                        ON intelligence.suspect_fingerprint_submissions (dossier_id)
+                """))
+                await conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_fp_submissions_captured_by
+                        ON intelligence.suspect_fingerprint_submissions (captured_by)
+                """))
+                await conn.execute(text("""
+                    ALTER TABLE intelligence.suspect_fingerprint_submissions
+                        ADD COLUMN IF NOT EXISTS image_data BYTEA,
+                        ADD COLUMN IF NOT EXISTS image_width INTEGER,
+                        ADD COLUMN IF NOT EXISTS image_height INTEGER
+                """))
+            logger.info("Suspect fingerprint submissions table verified")
+        except Exception as exc:
+            logger.error("fingerprint_submissions_table_init_failed", error=str(exc))
+
 
     from iip_core.object_storage import get_object_storage
 
@@ -270,6 +335,16 @@ def create_app() -> FastAPI:
         suspect_dossiers_router.router,
         prefix="/api/v1/intelligence/suspect-dossiers",
         tags=["suspect-dossiers"],
+    )
+    app.include_router(
+        fingerprint_submissions_router.mobile_router,
+        prefix="/api/v1/mobile",
+        tags=["mobile"],
+    )
+    app.include_router(
+        fingerprint_submissions_router.intelligence_router,
+        prefix="/api/v1/intelligence",
+        tags=["fingerprint-submissions"],
     )
     app.include_router(
         knowledge_graph_router.router,

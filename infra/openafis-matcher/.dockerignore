@@ -1,0 +1,8 @@
+vendor/openafis/.git
+vendor/openafis/data
+vendor/openafis/results
+vendor/openafis/qt
+vendor/openafis/CMakeCache.txt
+vendor/openafis/CMakeFiles
+vendor/openafis/lib/CMakeFiles
+vendor/openafis/cli/CMakeFiles

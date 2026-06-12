@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { Fingerprint } from 'lucide-react';
 import {
   FieldRow,
   FieldTable,
@@ -10,6 +11,7 @@ import {
   shortRefId,
 } from './suspectReportParts';
 import { SuspectDossierPhotoThumb } from '../SuspectDossierPhotoThumb';
+import { FingerprintImagePreview } from '../FingerprintImagePreview';
 
 function str(v: unknown): string {
   return v != null ? String(v) : '';
@@ -25,6 +27,7 @@ export interface MasterProfileData {
   social_accounts: Record<string, unknown>[];
   relatives: Record<string, unknown>[];
   photos: Record<string, unknown>[];
+  fingerprints: Record<string, unknown>[];
 }
 
 export function SuspectMasterReport({ profile }: { profile: MasterProfileData }) {
@@ -112,6 +115,63 @@ export function SuspectMasterReport({ profile }: { profile: MasterProfileData })
             </div>
           )}
         </div>
+        {profile.fingerprints && profile.fingerprints.length > 0 && (
+          <div className="mt-6 pt-4 border-t border-iip-border border-dashed">
+            <p className="text-xs font-semibold text-iip-text-muted uppercase tracking-wide mb-3">
+              Fingerprint biometrics (consolidated)
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {profile.fingerprints.map((f, i) => {
+                const pos = str(f.finger_position)
+                  .replace('_', ' ')
+                  .toLowerCase()
+                  .replace(/\b\w/g, (c) => c.toUpperCase());
+                const quality = f.quality_score != null ? Math.round(Number(f.quality_score) * 100) : null;
+                const device = f.device_model ? str(f.device_model) : null;
+                const office = str(f.office_name) || 'Unknown Unit';
+                
+                return (
+                  <div key={i} className="flex items-start gap-4 p-4 rounded-xl border border-iip-border bg-iip-bg/40 hover:bg-iip-bg/70 transition-colors shadow-sm">
+                    <FingerprintImagePreview
+                      printId={str(f.print_id)}
+                      altText={pos}
+                      className="w-14 h-18 object-cover rounded border border-iip-border bg-iip-bg shrink-0"
+                      iconSize={28}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-bold text-iip-text truncate">{pos}</p>
+                        {quality !== null && (
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                            quality >= 80 ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' : 
+                            quality >= 50 ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' : 
+                            'bg-red-500/10 text-red-600 border border-red-500/20'
+                          }`}>
+                            {quality}% Quality
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-iip-text-muted mt-1 font-medium">{office}</p>
+                      <p className="text-[11px] text-iip-text-muted/80 mt-0.5 font-medium">ISO 19794-2 FMR Template</p>
+                      {device && (
+                        <p className="text-[10px] text-iip-text-muted/60 mt-0.5 truncate font-mono">
+                          Device: {device}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-1.5 mt-2 text-[11px] text-emerald-600 font-semibold">
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                        </span>
+                        <span>Active & Searchable</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </ReportSection>
 
       <ReportSection number="II" title="Identities reported (by unit)">

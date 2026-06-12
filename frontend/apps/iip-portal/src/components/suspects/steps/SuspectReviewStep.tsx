@@ -296,6 +296,30 @@ export function SuspectReviewStep({ draft, onEditStep, onLinkDecision }: Suspect
                   }
                 />
               </FieldTable>
+              {draft.fingerprints.some(
+                (f) => f.templateDataB64 || f.printId || f.status === 'validated'
+              ) && (
+                <div className="mt-4 pt-4 border-t border-iip-border border-dashed">
+                  <p className="text-xs font-semibold text-iip-text uppercase tracking-wide mb-2">
+                    Fingerprint biometrics
+                  </p>
+                  <FieldTable>
+                    {draft.fingerprints
+                      .filter(
+                        (f) => f.templateDataB64 || f.printId || f.status === 'validated'
+                      )
+                      .map((f) => (
+                        <FieldRow
+                          key={f.id}
+                          label={f.label}
+                          value={`ISO Template captured ${
+                            f.qualityScore != null ? `(Quality ${Math.round(f.qualityScore * 100)}%)` : ''
+                          }`}
+                        />
+                      ))}
+                  </FieldTable>
+                </div>
+              )}
               {annexPhotos.length > 0 && (
                 <div className="suspect-report__photo-grid">
                   <p className="suspect-report__photo-grid-label">Supplementary angles</p>

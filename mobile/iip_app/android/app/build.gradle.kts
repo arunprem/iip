@@ -17,12 +17,21 @@ android {
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "gov.in.iip.iip_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // SecuGen FDx SDK v4.22 requires Android 8.1+ (API 27)
+        minSdk = maxOf(flutter.minSdkVersion, 27)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Physical-device dev: skip x86/x86_64 SecuGen libs (faster builds, avoids NDK strip warnings)
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 
     buildTypes {
@@ -42,4 +51,12 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Run: mobile/iip_app/scripts/install-secugen-sdk.sh
+    val secuGenJar = file("libs/FDxSDKProFDAndroid.jar")
+    if (secuGenJar.exists()) {
+        implementation(files(secuGenJar))
+    }
 }

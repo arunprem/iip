@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, status, Form, File, UploadFile
+from fastapi import APIRouter, Depends, Query, Response, status, Form, File, UploadFile
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
-from iip_core.auth import CurrentUser
+from iip_core.auth import CurrentUser, bearer_scheme
 from iip_core.db import AsyncSession, get_db
 from iip_core.errors import ErrorCode, IIPException
 from iip_core.logging import get_logger
@@ -27,6 +28,7 @@ from iam_svc.services.knowledge_graph_service import sync_dossier_associates_to_
 from iam_svc.models.suspect_dossier import SuspectDossier
 from iam_svc.repositories.suspect_dossier_repository import SuspectDossierRepository
 from iam_svc.services.permission_service import PermissionService
+from iam_svc.services.fingerprint_ml_client import delete_indexed_fingerprint
 from iam_svc.services.suspect_master_profile import build_dossier_detail, build_master_profile
 from iam_svc.services.suspect_match_scoring import (
     MatchCandidateInput,
@@ -1127,6 +1129,55 @@ async def delete_quick_suspect_capture(
 
     # Delete from DB
     await db.delete(row)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/{dossier_id}/fingerprints/{print_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_suspect_dossier_fingerprint(
+    dossier_id: uuid.UUID,
+    print_id: uuid.UUID,
+    current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
+    role: Annotated[Role, Depends(require_suspect_dossier_update)],
+    office_id: Annotated[uuid.UUID, Depends(get_office_id)],
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    _ = current_user
+    _ = role
+    repo = SuspectDossierRepository(db)
+    dossier = await repo.get_dossier(dossier_id)
+    if not dossier:
+        raise IIPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code=ErrorCode.NOT_FOUND,
+            detail="Dossier not found",
+        )
+
+    cross_unit = await can_read_cross_unit(role, db)
+    if not cross_unit and dossier.office_id != office_id:
+        raise IIPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            error_code=ErrorCode.FORBIDDEN,
+            detail="You do not have permission to update this dossier",
+        )
+
+    deleted = await repo.delete_fingerprint(dossier_id, print_id=print_id)
+    if deleted is None:
+        raise IIPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code=ErrorCode.NOT_FOUND,
+            detail="Fingerprint not found on this dossier",
+        )
+
+    if deleted.print_id:
+        await delete_indexed_fingerprint(
+            access_token=credentials.credentials,
+            print_id=str(deleted.print_id),
+        )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
