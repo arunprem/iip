@@ -14,7 +14,6 @@ export function SuspectWizardStepper({
   completed,
   onStepClick,
 }: SuspectWizardStepperProps) {
-  const currentIndex = WIZARD_STEPS.findIndex((s) => s.id === currentStep);
   const navRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -31,9 +30,8 @@ export function SuspectWizardStepper({
       <ol className="dossier-wizard-steps">
         {WIZARD_STEPS.map((step, index) => {
           const isCurrent = step.id === currentStep;
-          const isPast = index < currentIndex;
-          const isDone = completed[step.id] || isPast;
-          const canJump = onStepClick && (isPast || isDone || index <= currentIndex);
+          const isDone = Boolean(completed[step.id]);
+          const canJump = Boolean(onStepClick);
 
           return (
             <li key={step.id} className="dossier-wizard-step">
@@ -63,7 +61,7 @@ export function SuspectWizardStepper({
                 <span
                   className={[
                     'dossier-wizard-connector',
-                    index < currentIndex && 'dossier-wizard-connector--done',
+                    isDone && 'dossier-wizard-connector--done',
                   ]
                     .filter(Boolean)
                     .join(' ')}

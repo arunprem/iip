@@ -38,6 +38,18 @@ from iam_svc.services.suspect_match_scoring import (
 )
 
 
+HOTSPOT_ACTIVE_STATUS_HINTS = (
+    "investigation",
+    "trial",
+    "pending",
+    "charge",
+    "sheet",
+    "abscond",
+    "warrant",
+    "proclaimed",
+)
+
+
 def _digits_only(value: str) -> str:
     return re.sub(r"\D", "", value)
 
@@ -116,6 +128,7 @@ def _filters_for_token(token: str) -> tuple[list, bool]:
         func.lower(func.coalesce(Suspect.alias_name, "")).like(term),
         func.lower(func.coalesce(Suspect.fathers_name, "")).like(term),
         func.lower(func.coalesce(Suspect.place_of_birth, "")).like(term),
+        func.lower(func.coalesce(Suspect.modus_operandi, "")).like(term),
         address_match,
         contact_match,
         social_match,
@@ -164,6 +177,16 @@ def _dossier_search_filters(q: str) -> tuple[list, bool]:
         used_digit_contact = used_digit_contact or used
 
     return [or_(*groups)], used_digit_contact
+
+
+def _has_recent_or_active_case(cases: list[SuspectCase], current_year: int) -> bool:
+    for case in cases:
+        if case.crime_year and case.crime_year >= current_year - 3:
+            return True
+        status_text = (case.present_status or "").strip().lower()
+        if any(hint in status_text for hint in HOTSPOT_ACTIVE_STATUS_HINTS):
+            return True
+    return False
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -296,6 +319,7 @@ class SuspectDossierRepository:
             place_of_birth=_optional_str(payload.get("place_of_birth")),
             religion=_optional_str(payload.get("religion")),
             category=_optional_str(payload.get("category")),
+            modus_operandi=_optional_str(payload.get("modus_operandi")),
             created_by=created_by,
             office_id=office_id,
         )
@@ -543,6 +567,7 @@ class SuspectDossierRepository:
         suspect.place_of_birth = _optional_str(payload.get("place_of_birth"))
         suspect.religion = _optional_str(payload.get("religion"))
         suspect.category = _optional_str(payload.get("category"))
+        suspect.modus_operandi = _optional_str(payload.get("modus_operandi"))
 
         master = await self.get_master(dossier.master_suspect_id)
         if master and dossier.link_status == "STANDALONE":
@@ -1571,6 +1596,114 @@ class SuspectDossierRepository:
         offset = max(0, (page - 1) * page_size)
         result = await self.session.execute(stmt.offset(offset).limit(page_size))
         return list(result.scalars().unique().all()), total
+
+    async def list_hotspot_points(
+        self,
+        *,
+        q: str | None = None,
+        district: str | None = None,
+        police_station: str | None = None,
+        address_scope: str = "both",
+        case_scope: str = "all",
+        office_id: uuid.UUID | None = None,
+        office_ids: list[uuid.UUID] | None = None,
+        cross_unit: bool = False,
+        limit: int = 5000,
+    ) -> list[dict]:
+        stmt = (
+            select(SuspectDossier)
+            .options(
+                selectinload(SuspectDossier.suspect).selectinload(Suspect.addresses),
+                selectinload(SuspectDossier.suspect).selectinload(Suspect.photos),
+                selectinload(SuspectDossier.cases),
+            )
+            .order_by(SuspectDossier.submitted_at.desc())
+        )
+
+        if not cross_unit:
+            if office_ids:
+                stmt = stmt.where(SuspectDossier.office_id.in_(office_ids))
+            elif office_id:
+                stmt = stmt.where(SuspectDossier.office_id == office_id)
+
+        if q and q.strip():
+            filters, _ = _dossier_search_filters(q)
+            stmt = stmt.join(Suspect).where(or_(*filters))
+
+        result = await self.session.execute(stmt.limit(limit))
+        rows = list(result.scalars().unique().all())
+        current_year = datetime.now(UTC).year
+        district_filter = district.strip().lower() if district and district.strip() else None
+        ps_filter = police_station.strip().lower() if police_station and police_station.strip() else None
+
+        points: list[dict] = []
+        for dossier in rows:
+            suspect = dossier.suspect
+            if case_scope == "recent_active" and not _has_recent_or_active_case(
+                list(dossier.cases or []), current_year
+            ):
+                continue
+
+            address_rows: list[tuple[str, SuspectAddress | None]] = []
+            if address_scope in {"both", "permanent"}:
+                address_rows.append(
+                    ("permanent", get_address_by_kind(suspect.addresses, is_permanent=True))
+                )
+            if address_scope in {"both", "present"}:
+                address_rows.append(
+                    ("present", get_address_by_kind(suspect.addresses, is_permanent=False))
+                )
+
+            front = next(
+                (
+                    photo
+                    for photo in sorted(suspect.photos or [], key=lambda p: (p.sort_order, str(p.photo_id)))
+                    if photo.storage_key and photo.pose_type == "FRONT"
+                ),
+                None,
+            )
+            if front is None:
+                front = next((photo for photo in (suspect.photos or []) if photo.storage_key), None)
+
+            for address_kind, address in address_rows:
+                if address is None or address.latitude is None or address.longitude is None:
+                    continue
+                district_text = (address.district or "").strip()
+                ps_text = (address.police_station or "").strip()
+                if district_filter and district_text.lower() != district_filter:
+                    continue
+                if ps_filter and ps_text.lower() != ps_filter:
+                    continue
+
+                points.append(
+                    {
+                        "point_id": f"{dossier.id}:{address_kind}",
+                        "dossier_id": str(dossier.id),
+                        "dossier_draft_id": str(dossier.dossier_draft_id) if dossier.dossier_draft_id else None,
+                        "suspect_id": str(suspect.id),
+                        "master_suspect_id": str(dossier.master_suspect_id),
+                        "criminal_name": suspect.criminal_name,
+                        "alias_name": suspect.alias_name,
+                        "link_status": dossier.link_status,
+                        "address_kind": address_kind,
+                        "latitude": float(address.latitude),
+                        "longitude": float(address.longitude),
+                        "district": district_text or None,
+                        "police_station": ps_text or None,
+                        "locality": (address.locality or "").strip() or None,
+                        "village_town_city": (address.village_town_city or "").strip() or None,
+                        "house_name": (address.house_name or "").strip() or None,
+                        "house_no": (address.house_no or "").strip() or None,
+                        "modus_operandi": suspect.modus_operandi,
+                        "case_count": len(dossier.cases or []),
+                        "front_photo_id": str(front.photo_id) if front else None,
+                        "front_photo_storage_key": front.storage_key if front else None,
+                        "submitted_at": dossier.submitted_at.isoformat(),
+                        "office_id": str(dossier.office_id) if dossier.office_id else None,
+                    }
+                )
+
+        return points
 
     async def get_dossier(self, dossier_id: uuid.UUID) -> SuspectDossier | None:
         stmt = (

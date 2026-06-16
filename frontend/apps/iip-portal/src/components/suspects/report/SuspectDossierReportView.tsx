@@ -12,6 +12,7 @@ import {
 } from './suspectReportParts';
 import { SuspectDossierPhotoThumb } from '../SuspectDossierPhotoThumb';
 import { FingerprintImagePreview } from '../FingerprintImagePreview';
+import { parseModusOperandi } from '../../../pages/suspects/suspectFormUtils';
 
 export interface DossierReportDetail {
   dossier_id: string;
@@ -54,6 +55,7 @@ export function SuspectDossierReportView({
   const front = photos.find((p) => str(p.pose_type).toUpperCase() === 'FRONT');
   const otherPhotos = photos.filter((p) => str(p.pose_type).toUpperCase() !== 'FRONT');
   const draftId = detail.dossier_draft_id ?? null;
+  const parsedModus = parseModusOperandi(str(identity.modus_operandi));
 
   const formatLine = (row: Record<string, unknown>) =>
     [
@@ -268,6 +270,8 @@ export function SuspectDossierReportView({
             right={{ label: 'Religion', value: str(identity.religion) }}
           />
           <FieldRow label="Social category" value={str(identity.category)} colSpan />
+          <FieldRow label="Modus tags" value={parsedModus.tags.join(', ')} colSpan />
+          <FieldRow label="Modus operandi" value={parsedModus.notes} colSpan />
         </FieldTable>
       </ReportSection>
 

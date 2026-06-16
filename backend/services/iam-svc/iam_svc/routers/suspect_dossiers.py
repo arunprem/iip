@@ -174,6 +174,7 @@ class UpdateSuspectDossierRequest(BaseModel):
     place_of_birth: str = Field(default="", alias="placeOfBirth")
     religion: str = ""
     category: str = ""
+    modus_operandi: str = Field(default="", alias="modusOperandi")
     address: SuspectAddressInput = Field(default_factory=SuspectAddressInput)
     present_address: SuspectAddressInput | None = Field(None, alias="presentAddress")
     has_different_present_address: bool = Field(False, alias="hasDifferentPresentAddress")
@@ -201,6 +202,7 @@ class CreateSuspectDossierRequest(BaseModel):
     place_of_birth: str = Field(default="", alias="placeOfBirth")
     religion: str = ""
     category: str = ""
+    modus_operandi: str = Field(default="", alias="modusOperandi")
     address: SuspectAddressInput = Field(default_factory=SuspectAddressInput)
     present_address: SuspectAddressInput | None = Field(None, alias="presentAddress")
     has_different_present_address: bool = Field(False, alias="hasDifferentPresentAddress")
@@ -277,6 +279,39 @@ class SuspectDossierListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class HotspotPointResponse(BaseModel):
+    point_id: str
+    dossier_id: str
+    dossier_draft_id: str | None = None
+    suspect_id: str
+    master_suspect_id: str
+    criminal_name: str
+    alias_name: str | None = None
+    link_status: str
+    address_kind: str
+    latitude: float
+    longitude: float
+    district: str | None = None
+    police_station: str | None = None
+    locality: str | None = None
+    village_town_city: str | None = None
+    house_name: str | None = None
+    house_no: str | None = None
+    modus_operandi: str | None = None
+    case_count: int = 0
+    front_photo_id: str | None = None
+    front_photo_storage_key: str | None = None
+    submitted_at: str
+    office_id: str | None = None
+
+
+class HotspotPointListResponse(BaseModel):
+    points: list[HotspotPointResponse]
+    total: int
+    districts: list[str] = Field(default_factory=list)
+    police_stations: list[str] = Field(default_factory=list)
 
 
 class CreateSuspectDossierResponse(BaseModel):
@@ -450,6 +485,7 @@ def _update_request_to_repo_payload(body: UpdateSuspectDossierRequest) -> dict[s
         "place_of_birth": body.place_of_birth,
         "religion": body.religion,
         "category": body.category,
+        "modus_operandi": body.modus_operandi,
         "address": permanent,
         "present_address": present,
         "contacts": [
@@ -560,6 +596,7 @@ def _request_to_repo_payload(body: CreateSuspectDossierRequest) -> dict[str, Any
         "place_of_birth": body.place_of_birth,
         "religion": body.religion,
         "category": body.category,
+        "modus_operandi": body.modus_operandi,
         "address": permanent,
         "present_address": present,
         "contacts": [
@@ -834,6 +871,44 @@ async def list_suspect_dossiers(
         total=total,
         page=page,
         page_size=page_size,
+    )
+
+
+@router.get("/hotspots/points", response_model=HotspotPointListResponse)
+async def list_hotspot_points(
+    current_user: Annotated[CurrentUser, Depends(get_current_user_db)],
+    role: Annotated[Role, Depends(require_suspect_dossier_read)],
+    office_id: Annotated[uuid.UUID, Depends(get_office_id)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    q: str | None = Query(None, max_length=200),
+    district: str | None = Query(None, max_length=120),
+    police_station: str | None = Query(None, max_length=120, alias="policeStation"),
+    address_scope: str = Query("both", pattern="^(both|permanent|present)$", alias="addressScope"),
+    case_scope: str = Query("all", pattern="^(all|recent_active)$", alias="caseScope"),
+    limit: int = Query(5000, ge=1, le=10000),
+) -> HotspotPointListResponse:
+    _ = current_user
+    repo = SuspectDossierRepository(db)
+    cross_unit = await can_read_cross_unit(role, db)
+    points = await repo.list_hotspot_points(
+        q=q,
+        district=district,
+        police_station=police_station,
+        address_scope=address_scope,
+        case_scope=case_scope,
+        office_id=office_id,
+        cross_unit=cross_unit,
+        limit=limit,
+    )
+    districts = sorted({str(p["district"]).strip() for p in points if p.get("district")})
+    police_stations = sorted(
+        {str(p["police_station"]).strip() for p in points if p.get("police_station")}
+    )
+    return HotspotPointListResponse(
+        points=[HotspotPointResponse(**point) for point in points],
+        total=len(points),
+        districts=districts,
+        police_stations=police_stations,
     )
 
 
@@ -1259,4 +1334,3 @@ async def get_suspect_dossier_detail(
     perm = PermissionService(db)
     detail["can_edit"] = await perm.role_has_action(role, "data:suspect-dossier", "UPDATE")
     return detail
-

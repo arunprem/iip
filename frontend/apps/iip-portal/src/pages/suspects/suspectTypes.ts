@@ -186,6 +186,8 @@ export interface SuspectDossierDraft {
   placeOfBirth: string;
   religion: string;
   category: string;
+  modusOperandi: string;
+  modusOperandiTags: string[];
   contacts: SuspectContact[];
   socialAccounts: SuspectSocialAccount[];
   relatives: SuspectRelative[];
@@ -199,13 +201,14 @@ export interface SuspectDossierDraft {
 
 export type WizardStepId =
   | 'photo'
-  | 'fingerprint'
   | 'identity'
-  | 'cases'
   | 'address'
+  | 'cases'
+  | 'modus_operandi'
   | 'contacts'
   | 'social'
   | 'relatives'
+  | 'fingerprint'
   | 'review';
 
 

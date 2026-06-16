@@ -5,6 +5,7 @@ import {
   emptyFingerprintSlot,
   emptyPresentAddress,
 } from './suspectFormDefaults';
+import { composeModusOperandi, parseModusOperandi } from './suspectFormUtils';
 import type {
   ContactType,
   FingerPosition,
@@ -222,6 +223,7 @@ export function dossierDetailToDraft(detail: Record<string, unknown>): SuspectDo
 
   const dossierId = str(detail.dossier_id);
   const dossierDraftId = str(detail.dossier_draft_id) || dossierId || crypto.randomUUID();
+  const parsedModus = parseModusOperandi(str(identity.modus_operandi));
 
   return {
     dossierDraftId,
@@ -240,6 +242,8 @@ export function dossierDetailToDraft(detail: Record<string, unknown>): SuspectDo
     placeOfBirth: str(identity.place_of_birth),
     religion: str(identity.religion),
     category: str(identity.category),
+    modusOperandi: parsedModus.notes,
+    modusOperandiTags: parsedModus.tags,
     address: mapAddressRow(permRow, true),
     presentAddress: hasDifferent && presRow ? mapAddressRow(presRow, false) : emptyPresentAddress(),
     hasDifferentPresentAddress: hasDifferent,
@@ -266,6 +270,7 @@ export function draftToUpdatePayload(draft: SuspectDossierDraft) {
     placeOfBirth: draft.placeOfBirth,
     religion: draft.religion,
     category: draft.category,
+    modusOperandi: composeModusOperandi(draft.modusOperandiTags, draft.modusOperandi),
     ...addressesToApiPayload(draft),
     contacts: draft.contacts,
     socialAccounts: draft.socialAccounts,

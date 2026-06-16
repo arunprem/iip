@@ -162,3 +162,9 @@ async def can_read_master(role: Role, db: AsyncSession) -> bool:
     return await PermissionService(db).role_has_action(
         role, "data:suspect-dossier", "READ_MASTER"
     )
+
+
+async def require_humint_vault_access(
+    role: Annotated[Role, Depends(get_office_role)],
+) -> Role:
+    return role

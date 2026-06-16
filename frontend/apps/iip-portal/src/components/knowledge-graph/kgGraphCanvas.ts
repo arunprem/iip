@@ -13,6 +13,7 @@ export function normalizeGender(g?: string | null): NormalizedGender {
 
 export function formatRelationRole(role: string): string {
   if (role === 'CO_ACCUSED') return 'Co-Accused (Same FIR)';
+  if (role === 'ACCOMPLICE' || role === 'ASSOCIATE') return 'Associate';
   return role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 

@@ -124,6 +124,11 @@ class MlGatewaySettings(BaseServiceSettings):
         description="Normalize bozorth3 score to 0–1 similarity for API responses",
     )
 
+    humint_index_name: str = Field(default="iip-humint-reports")
+    humint_text_embedding_model: str = Field(default="sentence-transformers/all-MiniLM-L6-v2")
+    humint_caption_model: str = Field(default="Salesforce/blip-image-captioning-base")
+    humint_asr_model: str = Field(default="openai/whisper-small")
+
 
 @lru_cache(maxsize=1)
 def get_ml_settings() -> MlGatewaySettings:

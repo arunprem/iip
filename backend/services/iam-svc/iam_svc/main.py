@@ -52,6 +52,7 @@ from .routers import unit_types as unit_types_router
 from .routers import office_lookups as office_lookups_router
 from .routers import fingerprint_submissions as fingerprint_submissions_router
 from .routers import suspect_dossiers as suspect_dossiers_router
+from .routers import humint_reports as humint_reports_router
 from .routers import knowledge_graph as knowledge_graph_router
 
 settings = BaseServiceSettings(service_name="iam-svc")
@@ -103,6 +104,66 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if _engine:
         try:
             async with _engine.begin() as conn:
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS intelligence.humint_reports (
+                        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                        office_id UUID NOT NULL REFERENCES iam.offices(id) ON DELETE RESTRICT,
+                        reported_by UUID NOT NULL REFERENCES iam.users(id) ON DELETE RESTRICT,
+                        title VARCHAR(255) NOT NULL,
+                        report_type VARCHAR(40) NOT NULL,
+                        status VARCHAR(30) NOT NULL DEFAULT 'DRAFT',
+                        narrative TEXT NOT NULL,
+                        event_at VARCHAR(40),
+                        location_text VARCHAR(255),
+                        latitude VARCHAR(30),
+                        longitude VARCHAR(30),
+                        urgency VARCHAR(20),
+                        supervisor_cross_unit_visible BOOLEAN NOT NULL DEFAULT FALSE,
+                        linked_suspect_dossier_id UUID REFERENCES intelligence.suspect_dossiers(id) ON DELETE SET NULL,
+                        linked_case_ref VARCHAR(120),
+                        linked_hotspot_label VARCHAR(255),
+                        linked_graph_node_id VARCHAR(120),
+                        llm_summary TEXT,
+                        llm_structured_report TEXT,
+                        llm_entities JSONB,
+                        search_text TEXT,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """))
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS intelligence.humint_report_attachments (
+                        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                        report_id UUID NOT NULL REFERENCES intelligence.humint_reports(id) ON DELETE CASCADE,
+                        uploaded_by UUID NOT NULL REFERENCES iam.users(id) ON DELETE RESTRICT,
+                        attachment_type VARCHAR(20) NOT NULL,
+                        file_name VARCHAR(255) NOT NULL,
+                        content_type VARCHAR(120),
+                        object_key VARCHAR(512) NOT NULL,
+                        file_size_bytes INTEGER,
+                        extracted_text TEXT,
+                        ocr_text TEXT,
+                        vision_caption TEXT,
+                        audio_transcript TEXT,
+                        vector_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """))
+                await conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_humint_reports_office_status
+                    ON intelligence.humint_reports (office_id, status, created_at DESC)
+                """))
+                await conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_humint_reports_type
+                    ON intelligence.humint_reports (report_type, created_at DESC)
+                """))
+                await conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_humint_report_attachments_report
+                    ON intelligence.humint_report_attachments (report_id)
+                """))
+                logger.info("humint_tables_verified")
+
                 await conn.execute(text("""
                     CREATE TABLE IF NOT EXISTS intelligence.quick_suspect_captures (
                         id           UUID PRIMARY KEY,
@@ -335,6 +396,11 @@ def create_app() -> FastAPI:
         suspect_dossiers_router.router,
         prefix="/api/v1/intelligence/suspect-dossiers",
         tags=["suspect-dossiers"],
+    )
+    app.include_router(
+        humint_reports_router.router,
+        prefix="/api/v1/intelligence/humint-reports",
+        tags=["humint-reports"],
     )
     app.include_router(
         fingerprint_submissions_router.mobile_router,

@@ -16,6 +16,7 @@ import { SuspectWizardStepper } from '../../components/suspects/SuspectWizardSte
 import { SuspectAddressStep } from '../../components/suspects/steps/SuspectAddressStep';
 import { SuspectContactsStep } from '../../components/suspects/steps/SuspectContactsStep';
 import { SuspectIdentityStep } from '../../components/suspects/steps/SuspectIdentityStep';
+import { SuspectModusOperandiStep } from '../../components/suspects/steps/SuspectModusOperandiStep';
 import { SuspectCasesStep } from '../../components/suspects/steps/SuspectCasesStep';
 import { SuspectFingerprintStep } from '../../components/suspects/steps/SuspectFingerprintStep';
 import { SuspectPhotoStep } from '../../components/suspects/steps/SuspectPhotoStep';
@@ -36,8 +37,8 @@ import {
   emptyDossierDraft,
 } from './suspectFormDefaults';
 import {
-  fingerprintsStepBlockedReason,
   hasValidatedFrontPhoto,
+  identityStepBlockedReason,
   normalizeDossierDraft,
   photosStepBlockedReason,
   stepCompletion,
@@ -138,27 +139,19 @@ export default function SuspectDossierCreate() {
   }, [draft]);
 
   const handleStepClick = (targetStep: WizardStepId) => {
-    const targetIndex = WIZARD_STEPS.findIndex((s) => s.id === targetStep);
-    const photoIndex = WIZARD_STEPS.findIndex((s) => s.id === 'photo');
-    if (targetIndex > photoIndex) {
+    if (targetStep !== 'photo') {
       const block = photosStepBlockedReason(draft);
       if (block) {
         showToast('warning', block);
         return;
       }
     }
-    const fingerprintIndex = WIZARD_STEPS.findIndex((s) => s.id === 'fingerprint');
-    if (targetIndex > fingerprintIndex) {
-      const fpBlock = fingerprintsStepBlockedReason(draft);
-      if (fpBlock) {
-        showToast('warning', fpBlock);
+    if (targetStep !== 'photo' && targetStep !== 'identity') {
+      const block = identityStepBlockedReason(draft);
+      if (block) {
+        showToast('warning', block);
         return;
       }
-    }
-    const identityIndex = WIZARD_STEPS.findIndex((s) => s.id === 'identity');
-    if (targetIndex > identityIndex && !draft.criminalName.trim()) {
-      showToast('warning', 'Criminal name is required before continuing.');
-      return;
     }
     setStep(targetStep);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -172,16 +165,12 @@ export default function SuspectDossierCreate() {
         return;
       }
     }
-    if (step === 'fingerprint') {
-      const fpBlock = fingerprintsStepBlockedReason(draft);
-      if (fpBlock) {
-        showToast('warning', fpBlock);
+    if (step === 'identity') {
+      const block = identityStepBlockedReason(draft);
+      if (block) {
+        showToast('warning', block);
         return;
       }
-    }
-    if (step === 'identity' && !draft.criminalName.trim()) {
-      showToast('warning', 'Criminal name is required before continuing.');
-      return;
     }
     if (stepIndex < WIZARD_STEPS.length - 1) {
       setStep(WIZARD_STEPS[stepIndex + 1].id);
@@ -352,6 +341,13 @@ export default function SuspectDossierCreate() {
             onChange={(cases) => patchDraft({ cases })}
           />
         );
+      case 'modus_operandi':
+        return (
+          <SuspectModusOperandiStep
+            draft={draft}
+            onChange={patchDraft}
+          />
+        );
       case 'address':
         return (
           <SuspectAddressStep
@@ -418,7 +414,7 @@ export default function SuspectDossierCreate() {
           <Keyboard size={16} className="shrink-0 opacity-70" />
           <span>
             Tip: press <strong>Enter</strong> to move to the next step (except on review). Use the
-            step bar above to jump back to any completed section.
+            step bar above to jump to any section after photo and criminal identity are filled.
           </span>
         </AdminTipBanner>
 

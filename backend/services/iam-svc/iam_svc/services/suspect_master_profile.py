@@ -42,6 +42,7 @@ def _identity_block(suspect: Suspect, dossier: SuspectDossier, office_name: str 
         "place_of_birth": suspect.place_of_birth,
         "religion": suspect.religion,
         "category": suspect.category,
+        "modus_operandi": suspect.modus_operandi,
     }
 
 

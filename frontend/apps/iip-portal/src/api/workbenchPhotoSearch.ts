@@ -86,6 +86,7 @@ export function formatDossierSummaryForLlm(detail: Record<string, unknown>): str
     identity.age != null ? `Age: ${str(identity.age)}` : null,
     identity.gender ? `Gender: ${str(identity.gender)}` : null,
     identity.category ? `Category: ${str(identity.category)}` : null,
+    identity.modus_operandi ? `Modus operandi: ${str(identity.modus_operandi)}` : null,
     `Permanent address: ${formatAddress(detail.address as Record<string, unknown> | undefined)}`,
     detail.has_different_present_address
       ? `Present address: ${formatAddress(detail.present_address as Record<string, unknown> | undefined)}`
@@ -455,9 +456,9 @@ Reply briefly with helpful next steps.`;
   return `You are the intelligence analyst assistant in chat. The analyst asked:
 "${userQuestion}"
 
-No dossier records matched in name, alias, father's name, relative name, address, phone, or email fields.
+No dossier records matched in name, alias, father's name, relative name, address, modus operandi, phone, or email fields.
 
-Reply conversationally: explain no matches, suggest refining spelling, partial name, locality/village, district, police station, father's name, relative name, phone number, or photo upload.`;
+Reply conversationally: explain no matches, suggest refining spelling, partial name, locality/village, district, police station, father's name, relative name, modus operandi keyword, phone number, or photo upload.`;
 }
 
 export async function searchSuspectsByQuery(
@@ -497,4 +498,3 @@ export async function searchSuspectsByQuery(
 
   return out;
 }
-

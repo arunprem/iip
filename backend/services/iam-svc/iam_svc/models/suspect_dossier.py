@@ -47,6 +47,7 @@ class Suspect(Base):
     place_of_birth: Mapped[str | None] = mapped_column(String(255), nullable=True)
     religion: Mapped[str | None] = mapped_column(String(100), nullable=True)
     category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    modus_operandi: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("iam.users.id"),

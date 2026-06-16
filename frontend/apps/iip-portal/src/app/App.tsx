@@ -46,6 +46,7 @@ const SuspectDossierEdit = React.lazy(() => import('../pages/suspects/SuspectDos
 const SuspectDossierDetail = React.lazy(() => import('../pages/suspects/SuspectDossierDetail'))
 const SuspectMasterProfile = React.lazy(() => import('../pages/suspects/SuspectMasterProfile'))
 const FingerprintApprovals = React.lazy(() => import('../pages/suspects/FingerprintApprovals'))
+const ThreatProfiler = React.lazy(() => import('../pages/ThreatProfiler'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -196,6 +197,7 @@ const AuthenticatedLayout = () => {
                 <Route path="/analyst-workbench" element={<AnalystWorkbench />} />
                 <Route path="/hotspot-console" element={<HotspotConsole />} />
                 <Route path="/kg-canvas" element={<KGCanvas />} />
+                <Route path="/threat-profiler" element={<ThreatProfiler />} />
                 <Route path="/humint-vault" element={<HumintVault />} />
                 <Route path="/suspects" element={<SuspectDossierList />} />
                 <Route path="/suspects/fingerprint-approvals" element={<FingerprintApprovals />} />

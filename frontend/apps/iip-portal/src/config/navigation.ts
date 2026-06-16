@@ -16,6 +16,7 @@ import {
   Tags,
   Award,
   SlidersHorizontal,
+  Radar,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -89,6 +90,13 @@ export const MAIN_MENU_ENTRIES: MenuEntryConfig[] = [
         icon: Network,
         roles: ['ANALYST', 'SUPERVISOR'],
         menuKey: 'kg-canvas',
+      },
+      {
+        to: '/threat-profiler',
+        label: 'Threat Profiler',
+        icon: Radar,
+        roles: ['ANALYST', 'SUPERVISOR', 'SYSTEM_ADMIN'],
+        menuKey: 'threat-profiler',
       },
     ],
   },

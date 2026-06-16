@@ -93,8 +93,8 @@ export const FINGERPRINT_SLOT_DEFS: {
   {
     fingerPosition: 'RIGHT_THUMB',
     label: 'Right thumb',
-    required: true,
-    hint: 'Mandatory — used for AFIS duplicate checks and field search',
+    required: false,
+    hint: 'Optional — used for AFIS duplicate checks and field search',
   },
   {
     fingerPosition: 'RIGHT_INDEX',
@@ -188,6 +188,8 @@ export function emptyDossierDraft(): SuspectDossierDraft {
     placeOfBirth: '',
     religion: '',
     category: '',
+    modusOperandi: '',
+    modusOperandiTags: [],
     address: emptyAddress(),
     presentAddress: emptyPresentAddress(),
     hasDifferentPresentAddress: false,
@@ -210,16 +212,16 @@ export const WIZARD_STEPS = [
     description: 'Upload a clear photograph before entering details.',
   },
   {
-    id: 'fingerprint',
-    label: 'Fingerprints',
-    shortLabel: 'Prints',
-    description: 'Capture ISO templates from the SecuGen scanner (no images stored).',
-  },
-  {
     id: 'identity',
     label: 'Criminal information',
     shortLabel: 'Identity',
     description: 'Legal name, aliases, and demographic details.',
+  },
+  {
+    id: 'address',
+    label: 'Address',
+    shortLabel: 'Address',
+    description: 'Residential or known location with map coordinates.',
   },
   {
     id: 'cases',
@@ -228,11 +230,10 @@ export const WIZARD_STEPS = [
     description: 'Add crime cases, acts, sections and case status details.',
   },
   {
-    id: 'address',
-    label: 'Address',
-
-    shortLabel: 'Address',
-    description: 'Residential or known location with map coordinates.',
+    id: 'modus_operandi',
+    label: 'Modus operandi',
+    shortLabel: 'MO',
+    description: 'Typical crime execution methods and signature behaviors.',
   },
   {
     id: 'contacts',
@@ -245,6 +246,12 @@ export const WIZARD_STEPS = [
     label: 'Social media',
     shortLabel: 'Social',
     description: 'Online profiles linked to the suspect.',
+  },
+  {
+    id: 'fingerprint',
+    label: 'Fingerprints',
+    shortLabel: 'Prints',
+    description: 'Capture ISO templates from the SecuGen scanner (no images stored).',
   },
   {
     id: 'relatives',

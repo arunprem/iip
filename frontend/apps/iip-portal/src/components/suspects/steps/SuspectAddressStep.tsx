@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, MapPin } from 'lucide-react';
+import { Copy, MapPin, Sparkles, Loader2 } from 'lucide-react';
 import { AdminButton } from '../../admin/AdminButton';
 import { AddressFieldsForm } from '../AddressFieldsForm';
 import type { SuspectAddress } from '../../../pages/suspects/suspectTypes';
+import { assistantAutofill } from '../../../api/assistant';
+import { showToast } from '../../../stores/toastStore';
 
 interface SuspectAddressStepProps {
   permanentAddress: SuspectAddress;
@@ -26,6 +28,8 @@ export function SuspectAddressStep({
 }: SuspectAddressStepProps) {
   const [showPrompt, setShowPrompt] = useState(false);
   const [promptedCoords, setPromptedCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [parsingAddressField, setParsingAddressField] = useState<'perm' | 'present' | null>(null);
+  const [addressRawText, setAddressRawText] = useState({ perm: '', present: '' });
 
   useEffect(() => {
     if (
@@ -60,6 +64,45 @@ export function SuspectAddressStep({
     });
   };
 
+  const handleParseAddress = async (field: 'perm' | 'present') => {
+    const text = addressRawText[field];
+    if (!text.trim()) {
+      showToast('warning', 'Please enter address text to parse.');
+      return;
+    }
+    setParsingAddressField(field);
+    try {
+      const data = await assistantAutofill(`Extract address details from this text: ${text}`);
+      if (data.address) {
+        const parsed = {
+          houseNo: data.address.houseNo || '',
+          houseName: data.address.houseName || '',
+          streetName: data.address.streetName || '',
+          locality: data.address.locality || '',
+          tehsil: data.address.tehsil || '',
+          villageTownCity: data.address.villageTownCity || '',
+          pincode: data.address.pincode || '',
+          district: data.address.district || '',
+          state: data.address.state || 'KERALA',
+          country: 'INDIA',
+        };
+        if (field === 'perm') {
+          onPermanentChange({ ...permanentAddress, ...parsed, isPermanent: true });
+        } else {
+          onPresentChange({ ...presentAddress, ...parsed, isPermanent: false });
+        }
+        showToast('success', 'Address successfully parsed and filled!');
+        setAddressRawText((prev) => ({ ...prev, [field]: '' }));
+      } else {
+        showToast('warning', 'No structured address details found in the input.');
+      }
+    } catch {
+      showToast('error', 'Address parsing failed.');
+    } finally {
+      setParsingAddressField(null);
+    }
+  };
+
   const promptModal = showPrompt && photoGeoTag ? (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
@@ -82,11 +125,11 @@ export function SuspectAddressStep({
             <p className="text-[10px] text-iip-text-muted mt-0.5">Kerala Police FRS Assist</p>
           </div>
         </div>
-
+ 
         <p className="text-xs text-iip-text-muted leading-relaxed">
           We detected GPS coordinates <span className="text-iip-text font-medium">{photoGeoTag.latitude.toFixed(5)}, {photoGeoTag.longitude.toFixed(5)}</span> embedded in the imported quick suspect photograph. Would you like to use this photo's geo-tag location as the permanent address coordinates?
         </p>
-
+ 
         <div className="flex items-center gap-2 pt-2">
           <AdminButton
             type="button"
@@ -149,6 +192,34 @@ export function SuspectAddressStep({
             Native / permanent residence as recorded in official documents.
           </p>
         </div>
+
+        {/* AI Address Parser */}
+        <div className="rounded-xl border border-iip-primary/20 bg-iip-primary/[0.02] p-3 space-y-2 max-w-xl">
+          <div className="flex items-center gap-1.5 text-xs text-iip-primary font-semibold">
+            <Sparkles size={13} />
+            <span>AI Address Parser</span>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              className="form-control text-xs flex-1"
+              placeholder="Paste raw address (e.g. Mundakkal House, Fort Road, Kollam, 691001)..."
+              value={addressRawText.perm}
+              onChange={(e) => setAddressRawText((prev) => ({ ...prev, perm: e.target.value }))}
+              disabled={parsingAddressField !== null}
+            />
+            <AdminButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleParseAddress('perm')}
+              disabled={parsingAddressField !== null}
+            >
+              {parsingAddressField === 'perm' ? <Loader2 size={12} className="animate-spin" /> : 'Parse'}
+            </AdminButton>
+          </div>
+        </div>
+
         <AddressFieldsForm
           idPrefix="perm"
           address={{ ...permanentAddress, isPermanent: true }}
@@ -170,6 +241,34 @@ export function SuspectAddressStep({
               Copy from permanent
             </AdminButton>
           </div>
+
+          {/* AI Address Parser (Present) */}
+          <div className="rounded-xl border border-iip-primary/20 bg-iip-primary/[0.02] p-3 space-y-2 max-w-xl">
+            <div className="flex items-center gap-1.5 text-xs text-iip-primary font-semibold">
+              <Sparkles size={13} />
+              <span>AI Address Parser</span>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="form-control text-xs flex-1"
+                placeholder="Paste raw present address..."
+                value={addressRawText.present}
+                onChange={(e) => setAddressRawText((prev) => ({ ...prev, present: e.target.value }))}
+                disabled={parsingAddressField !== null}
+              />
+              <AdminButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => handleParseAddress('present')}
+                disabled={parsingAddressField !== null}
+              >
+                {parsingAddressField === 'present' ? <Loader2 size={12} className="animate-spin" /> : 'Parse'}
+              </AdminButton>
+            </div>
+          </div>
+
           <AddressFieldsForm
             idPrefix="present"
             address={{ ...presentAddress, isPermanent: false }}
@@ -182,3 +281,4 @@ export function SuspectAddressStep({
     </div>
   );
 }
+

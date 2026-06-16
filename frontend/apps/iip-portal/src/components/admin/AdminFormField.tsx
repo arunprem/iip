@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 interface AdminFormFieldProps {
   id: string;
-  label: string;
+  label: ReactNode;
   required?: boolean;
   hint?: string;
   error?: string;

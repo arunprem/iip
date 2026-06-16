@@ -1,5 +1,6 @@
 import { apiClient } from './http';
 import { addressesToApiPayload, draftToUpdatePayload } from '../pages/suspects/suspectDetailMappers';
+import { composeModusOperandi } from '../pages/suspects/suspectFormUtils';
 import type { SuspectDossierDraft, SuspectLinkDecision } from '../pages/suspects/suspectTypes';
 
 export interface ScoredMatch {
@@ -72,6 +73,7 @@ function draftToCreatePayload(
     placeOfBirth: draft.placeOfBirth,
     religion: draft.religion,
     category: draft.category,
+    modusOperandi: composeModusOperandi(draft.modusOperandiTags, draft.modusOperandi),
     ...addressesToApiPayload(draft),
     contacts: draft.contacts,
     socialAccounts: draft.socialAccounts,

@@ -67,7 +67,9 @@ RelationLinkStyle _styleDark(String role) {
       glow: Color(0x8CF43F5E),
     ),
   };
-  return map[normalizeRelationRole(role)] ?? map['CONTACT']!;
+  final key = normalizeRelationRole(role);
+  final lookupKey = key == 'ASSOCIATE' ? 'ACCOMPLICE' : key;
+  return map[lookupKey] ?? map['CONTACT']!;
 }
 
 RelationLinkStyle _styleLight(String role) {
@@ -113,7 +115,9 @@ RelationLinkStyle _styleLight(String role) {
       glow: Color(0x59E11D48),
     ),
   };
-  return map[normalizeRelationRole(role)] ?? map['CONTACT']!;
+  final key = normalizeRelationRole(role);
+  final lookupKey = key == 'ASSOCIATE' ? 'ACCOMPLICE' : key;
+  return map[lookupKey] ?? map['CONTACT']!;
 }
 
 RelationLinkStyle getRelationLinkStyle(String role, bool isDark) {

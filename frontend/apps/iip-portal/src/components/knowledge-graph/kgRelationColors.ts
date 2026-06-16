@@ -126,7 +126,8 @@ export function getRelationLinkStyle(
   role: string,
   isDark: boolean
 ): RelationLinkStyle {
-  const key = normalizeRelationRole(role);
+  const normalized = normalizeRelationRole(role);
+  const key = normalized === 'ASSOCIATE' ? 'ACCOMPLICE' : normalized;
   const table = isDark ? ROLE_STYLES_DARK : ROLE_STYLES_LIGHT;
   if (table[key]) return table[key];
   const idx = Math.abs(hashCode(key)) % FALLBACK_PALETTE_DARK.length;

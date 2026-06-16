@@ -272,7 +272,7 @@ export function SuspectFingerprintStep({
           <span
             className={[
               'dossier-photo-step__pill',
-              capturedCount > 0 ? 'dossier-photo-step__pill--ok' : 'dossier-photo-step__pill--req',
+              capturedCount > 0 ? 'dossier-photo-step__pill--ok' : '',
             ].join(' ')}
           >
             {capturedCount} on file

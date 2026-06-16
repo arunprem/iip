@@ -24,6 +24,7 @@ from iam_svc.models.suspect_dossier import (
     SuspectCase,
 )
 from iam_svc.models.suspect_link_decision import SuspectLinkDecision
+from iam_svc.models.humint_report import HumintReport, HumintReportAttachment
 from iip_core.db import Base
 
 __all__ = [
@@ -53,5 +54,6 @@ __all__ = [
     "QuickSuspectCapture",
     "SuspectFingerprintSubmission",
     "SuspectCase",
+    "HumintReport",
+    "HumintReportAttachment",
 ]
-

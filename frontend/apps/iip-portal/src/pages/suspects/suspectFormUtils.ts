@@ -8,6 +8,42 @@ import type {
 
 export { newRowId } from './suspectRowIds';
 
+const MODUS_TAGS_PREFIX = 'Tags:';
+
+export function normalizeModusTag(tag: string): string {
+  return tag.replace(/\s+/g, ' ').trim();
+}
+
+export function parseModusOperandi(value: string | null | undefined): {
+  tags: string[];
+  notes: string;
+} {
+  const raw = (value ?? '').trim();
+  if (!raw) return { tags: [], notes: '' };
+
+  const lines = raw.split(/\r?\n/);
+  const firstLine = lines[0]?.trim() ?? '';
+  if (!firstLine.toLowerCase().startsWith(MODUS_TAGS_PREFIX.toLowerCase())) {
+    return { tags: [], notes: raw };
+  }
+
+  const tags = firstLine
+    .slice(MODUS_TAGS_PREFIX.length)
+    .split(',')
+    .map(normalizeModusTag)
+    .filter(Boolean);
+  const notes = lines.slice(1).join('\n').trim();
+  return { tags: Array.from(new Set(tags)), notes };
+}
+
+export function composeModusOperandi(tags: string[], notes: string): string {
+  const normalizedTags = Array.from(new Set(tags.map(normalizeModusTag).filter(Boolean)));
+  const trimmedNotes = notes.trim();
+  if (normalizedTags.length === 0) return trimmedNotes;
+  if (!trimmedNotes) return `${MODUS_TAGS_PREFIX} ${normalizedTags.join(', ')}`;
+  return `${MODUS_TAGS_PREFIX} ${normalizedTags.join(', ')}\n\n${trimmedNotes}`;
+}
+
 export function addressHasContent(addr: SuspectAddress): boolean {
   return Boolean(
     addr.villageTownCity.trim() ||
@@ -23,6 +59,7 @@ export function normalizeDossierDraft(
   parsed: Partial<SuspectDossierDraft> & { address?: SuspectAddress }
 ): SuspectDossierDraft {
   const base = emptyDossierDraft();
+  const parsedModus = parseModusOperandi(parsed.modusOperandi);
   const merged: SuspectDossierDraft = {
     ...base,
     ...parsed,
@@ -33,7 +70,25 @@ export function normalizeDossierDraft(
     hasDifferentPresentAddress: parsed.hasDifferentPresentAddress ?? false,
     associates: parsed.associates ?? [],
     cases: parsed.cases ?? [],
-    fingerprints: parsed.fingerprints ?? base.fingerprints,
+    photos: (parsed.photos ?? base.photos).map((p) => {
+      const def = base.photos.find((x) => x.poseType === p.poseType);
+      return {
+        ...p,
+        required: def ? def.required : p.required,
+      };
+    }),
+    fingerprints: (parsed.fingerprints ?? base.fingerprints).map((f) => {
+      const def = base.fingerprints.find((x) => x.fingerPosition === f.fingerPosition);
+      return {
+        ...f,
+        required: def ? def.required : f.required,
+      };
+    }),
+    modusOperandi: parsedModus.notes || parsed.modusOperandi || '',
+    modusOperandiTags:
+      parsed.modusOperandiTags && parsed.modusOperandiTags.length > 0
+        ? parsed.modusOperandiTags.map(normalizeModusTag).filter(Boolean)
+        : parsedModus.tags,
     linkDecision: parsed.linkDecision ?? null,
   };
 
@@ -165,6 +220,13 @@ export function photosStepBlockedReason(draft: SuspectDossierDraft): string | nu
   return null;
 }
 
+export function identityStepBlockedReason(draft: SuspectDossierDraft): string | null {
+  if (!draft.criminalName.trim()) {
+    return 'Criminal name is required before continuing.';
+  }
+  return null;
+}
+
 export function stepCompletion(draft: SuspectDossierDraft): Record<string, boolean> {
   const hasPhoto = hasValidatedFrontPhoto(draft);
   const hasIdentity = Boolean(draft.criminalName.trim());
@@ -173,18 +235,27 @@ export function stepCompletion(draft: SuspectDossierDraft): Record<string, boole
     (!draft.hasDifferentPresentAddress || addressHasContent(draft.presentAddress));
   const hasContacts = draft.contacts.some((c) => c.value.trim());
   const hasSocial = draft.socialAccounts.some((s) => s.details.trim());
+  const hasCases = draft.cases.some(
+    (c) =>
+      c.crimeNumber.trim() ||
+      c.policeStationName?.trim() ||
+      c.actSection?.trim() ||
+      c.brief?.trim()
+  );
+  const hasModusOperandi = Boolean(draft.modusOperandi.trim());
+  const hasModusOperandiTags = draft.modusOperandiTags.some((tag) => tag.trim());
   const hasRelatives = draft.relatives.some((r) => r.name.trim());
   const hasAssociates = (draft.associates ?? []).some((a) => a.name.trim());
 
-  const hasFingerprint =
-    hasValidatedRequiredFingerprint(draft) ||
-    draft.fingerprints.some((f) => isFingerprintOnFile(f));
+  const hasFingerprint = draft.fingerprints.some((f) => isFingerprintOnFile(f));
 
   return {
     photo: hasPhoto,
     fingerprint: hasFingerprint,
     identity: hasIdentity,
     address: hasAddress,
+    cases: hasCases,
+    modus_operandi: hasModusOperandi || hasModusOperandiTags,
     contacts: hasContacts,
     social: hasSocial,
     relatives: hasRelatives || hasAssociates,

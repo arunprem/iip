@@ -23,8 +23,10 @@ from iip_core.db import close_db, init_db
 from iip_core.errors import IIPException, iip_exception_handler
 from iip_core.logging import configure_logging, get_logger
 from .routers import chat as chat_router
+from .routers import assistant as assistant_router
 from .routers import faces as faces_router
 from .routers import fingerprints as fingerprints_router
+from .routers import humint as humint_router
 from .routers import health as health_router
 from .routers import rag as rag_router
 from .services.face_index import FaceIndexService
@@ -113,11 +115,13 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router.router, tags=["health"])
     app.include_router(chat_router.router, prefix="/api/v1/ml/chat", tags=["chat"])
+    app.include_router(assistant_router.router, prefix="/api/v1/ml/assistant", tags=["assistant"])
     app.include_router(rag_router.router, prefix="/api/v1/ml/rag", tags=["rag"])
     app.include_router(faces_router.router, prefix="/api/v1/ml/faces", tags=["faces"])
     app.include_router(
         fingerprints_router.router, prefix="/api/v1/ml/fingerprints", tags=["fingerprints"]
     )
+    app.include_router(humint_router.router, prefix="/api/v1/ml/humint", tags=["humint"])
 
     FastAPIInstrumentor.instrument_app(app)
 

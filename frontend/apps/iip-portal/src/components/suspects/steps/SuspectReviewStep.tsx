@@ -362,6 +362,8 @@ export function SuspectReviewStep({ draft, onEditStep, onLinkDecision }: Suspect
               right={{ label: 'Religion', value: draft.religion }}
             />
             <FieldRow label="Social category" value={draft.category} colSpan />
+            <FieldRow label="Modus tags" value={draft.modusOperandiTags.join(', ')} colSpan />
+            <FieldRow label="Modus operandi" value={draft.modusOperandi} colSpan />
           </FieldTable>
         </ReportSection>
 
