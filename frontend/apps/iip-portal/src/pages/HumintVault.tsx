@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, FilePlus2, Loader2, Search, UserCheck } from 'lucide-react';
+import { Bot, FilePlus2, Loader2, Search, UserCheck, FileText, Image as ImageIcon, Mic } from 'lucide-react';
+import { AddressLocationPicker } from '../components/suspects/AddressLocationPicker';
 import { AdminPageLayout } from '../components/admin/AdminPageLayout';
 import { AdminSectionCard } from '../components/admin/AdminSectionCard';
 import { AdminButton } from '../components/admin/AdminButton';
@@ -194,7 +195,7 @@ export default function HumintVault() {
                 />
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-iip-text-muted">Event Time</label>
                   <input type="datetime-local" className="form-control" value={eventAt} onChange={(e) => setEventAt(e.target.value)} />
@@ -205,14 +206,18 @@ export default function HumintVault() {
                     {URGENCY_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-iip-text-muted">Latitude</label>
-                  <input className="form-control" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="8.5241" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-iip-text-muted">Longitude</label>
-                  <input className="form-control" value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="76.9366" />
-                </div>
+              </div>
+
+              <div className="rounded-2xl border border-iip-border bg-iip-bg/40 p-4">
+                <AddressLocationPicker
+                  latitude={latitude}
+                  longitude={longitude}
+                  onChange={(lat, lng) => {
+                    setLatitude(lat);
+                    setLongitude(lng);
+                  }}
+                  mapId="humint-vault-map"
+                />
               </div>
 
               <div>
@@ -365,6 +370,37 @@ function HumintReportCard({ report }: { report: HumintReport }) {
         {report.linked_case_ref && <span className="rounded-full border border-iip-border px-2 py-1">Case: {report.linked_case_ref}</span>}
         {report.linked_hotspot_label && <span className="rounded-full border border-iip-border px-2 py-1">Hotspot: {report.linked_hotspot_label}</span>}
       </div>
+      {report.attachments.length > 0 && (
+        <div className="mt-3 space-y-2 border-t border-iip-border pt-3">
+          <p className="text-[11px] font-semibold text-iip-text-muted uppercase tracking-wider">Attachments & Intelligence</p>
+          <div className="flex flex-col gap-2">
+            {report.attachments.map((att) => (
+              <div key={att.id} className="rounded-xl border border-iip-border bg-iip-bg/50 p-2.5 text-xs">
+                <div className="flex items-center gap-2 font-medium text-iip-text mb-1.5">
+                  {att.attachment_type === 'PHOTO' && <ImageIcon size={14} className="text-blue-500" />}
+                  {att.attachment_type === 'AUDIO' && <Mic size={14} className="text-green-500" />}
+                  {att.attachment_type === 'DOCUMENT' && <FileText size={14} className="text-orange-500" />}
+                  <span className="truncate">{att.file_name}</span>
+                </div>
+                <div className="space-y-1.5 pl-5">
+                  {att.vision_caption && (
+                    <p className="text-iip-text-muted leading-relaxed"><strong className="text-iip-text">Vision AI:</strong> {att.vision_caption}</p>
+                  )}
+                  {att.audio_transcript && (
+                    <p className="text-iip-text-muted leading-relaxed"><strong className="text-iip-text">Transcript:</strong> {att.audio_transcript}</p>
+                  )}
+                  {att.ocr_text && (
+                    <p className="text-iip-text-muted leading-relaxed line-clamp-3"><strong className="text-iip-text">OCR:</strong> {att.ocr_text}</p>
+                  )}
+                  {att.extracted_text && !att.audio_transcript && !att.ocr_text && (
+                    <p className="text-iip-text-muted leading-relaxed line-clamp-3"><strong className="text-iip-text">Extracted:</strong> {att.extracted_text}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </article>
   );
 }
