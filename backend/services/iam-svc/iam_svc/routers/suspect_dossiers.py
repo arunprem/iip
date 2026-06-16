@@ -147,7 +147,20 @@ class LinkDecisionInput(BaseModel):
     decision: str = "REJECTED_LINK"  # CONFIRMED_LINK | REJECTED_LINK
 
 
+class SuspectCaseInput(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str | None = None
+    crime_number: str = Field(alias="crimeNumber")
+    crime_year: int = Field(alias="crimeYear")
+    police_station_id: str = Field(alias="policeStationId")
+    act_section: str | None = Field(default=None, alias="actSection")
+    brief: str | None = None
+    present_status: str | None = Field(default=None, alias="presentStatus")
+
+
 class UpdateSuspectDossierRequest(BaseModel):
+
     model_config = ConfigDict(populate_by_name=True)
 
     dossier_draft_id: str | None = Field(None, alias="dossierDraftId")
@@ -170,6 +183,8 @@ class UpdateSuspectDossierRequest(BaseModel):
     associates: list[SuspectAssociateInput] = Field(default_factory=list)
     photos: list[SuspectPhotoInput] = Field(default_factory=list)
     fingerprints: list[SuspectFingerprintInput] = Field(default_factory=list)
+    cases: list[SuspectCaseInput] = Field(default_factory=list)
+
 
 
 class CreateSuspectDossierRequest(BaseModel):
@@ -195,7 +210,9 @@ class CreateSuspectDossierRequest(BaseModel):
     associates: list[SuspectAssociateInput] = Field(default_factory=list)
     photos: list[SuspectPhotoInput] = Field(default_factory=list)
     fingerprints: list[SuspectFingerprintInput] = Field(default_factory=list)
+    cases: list[SuspectCaseInput] = Field(default_factory=list)
     link_master_id: str | None = Field(None, alias="linkMasterId")
+
     link_decision: LinkDecisionInput | None = Field(None, alias="linkDecision")
 
 
@@ -471,7 +488,20 @@ def _update_request_to_repo_payload(body: UpdateSuspectDossierRequest) -> dict[s
             if p.storage_key
         ],
         "fingerprints": _fingerprints_to_repo(body.fingerprints),
+        "cases": [
+            {
+                "id": c.id,
+                "crime_number": c.crime_number,
+                "crime_year": c.crime_year,
+                "police_station_id": c.police_station_id,
+                "act_section": c.act_section,
+                "brief": c.brief,
+                "present_status": c.present_status,
+            }
+            for c in body.cases
+        ],
     }
+
 
 
 def _fingerprints_to_repo(fingerprints: list[SuspectFingerprintInput]) -> list[dict[str, Any]]:
@@ -568,7 +598,20 @@ def _request_to_repo_payload(body: CreateSuspectDossierRequest) -> dict[str, Any
             if p.storage_key
         ],
         "fingerprints": _fingerprints_to_repo(body.fingerprints),
+        "cases": [
+            {
+                "id": c.id,
+                "crime_number": c.crime_number,
+                "crime_year": c.crime_year,
+                "police_station_id": c.police_station_id,
+                "act_section": c.act_section,
+                "brief": c.brief,
+                "present_status": c.present_status,
+            }
+            for c in body.cases
+        ],
     }
+
 
 
 @router.post("/score-matches", response_model=list[ScoredMatchResponse])
@@ -734,6 +777,7 @@ async def create_suspect_dossier(
 
     kg_associates = await repo.associates_for_graph_sync(dossier.id)
     await sync_dossier_associates_to_graph(
+        dossier_id=dossier.id,
         master_id=master.id,
         display_name=suspect.criminal_name,
         associates=kg_associates,
@@ -888,6 +932,7 @@ async def update_suspect_dossier(
 
     kg_associates = await repo.associates_for_graph_sync(dossier.id)
     await sync_dossier_associates_to_graph(
+        dossier_id=dossier.id,
         master_id=dossier.master_suspect_id,
         display_name=dossier.suspect.criminal_name,
         associates=kg_associates,

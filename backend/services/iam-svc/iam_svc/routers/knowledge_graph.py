@@ -68,6 +68,8 @@ class GraphEdge(BaseModel):
     role: str = "ASSOCIATE"
     link_kind: str = "associate"
     dossier_id: str | None = None
+    crime_number: str | None = None
+    ps_name: str | None = None
 
 
 class NetworkGraphResponse(BaseModel):
@@ -253,8 +255,7 @@ async def _fallback_network_from_postgres(
 ) -> dict:
     """Build a one-hop network from PostgreSQL when Neo4j has no data yet."""
     from sqlalchemy import select
-
-    from iam_svc.models.suspect_dossier import SuspectAssociate, SuspectDossier, SuspectMaster
+    from iam_svc.models.suspect_dossier import SuspectDossier
 
     master = await repo.get_master(master_id)
     if not master:
@@ -270,33 +271,34 @@ async def _fallback_network_from_postgres(
     }
     edges: list[dict] = []
 
-    stmt = (
-        select(SuspectAssociate, SuspectDossier)
-        .join(SuspectDossier, SuspectDossier.id == SuspectAssociate.dossier_id)
-        .where(SuspectDossier.master_suspect_id == master_id)
-    )
-    rows = (await repo.session.execute(stmt)).all()
-    for assoc, _dossier in rows:
-        if not assoc.linked_master_suspect_id:
-            continue
-        target_id = str(assoc.linked_master_suspect_id)
-        target_master = await repo.get_master(assoc.linked_master_suspect_id)
-        nodes[target_id] = {
-            "id": target_id,
-            "label": target_master.display_name if target_master else assoc.name,
-            "is_center": False,
-            "node_kind": "associate",
-        }
-        edge_id = f"{master_id}->{target_id}:{assoc.association_type or ''}"
-        edges.append(
-            {
-                "id": edge_id,
-                "source": str(master_id),
-                "target": target_id,
-                "role": assoc.association_type or "ASSOCIATE",
-                "link_kind": "associate",
-                "dossier_id": str(assoc.dossier_id),
+    dossiers_stmt = select(SuspectDossier).where(SuspectDossier.master_suspect_id == master_id)
+    dossiers = (await repo.session.execute(dossiers_stmt)).scalars().all()
+
+    for dossier in dossiers:
+        associates = await repo.associates_for_graph_sync(dossier.id)
+        for assoc in associates:
+            target_id = assoc["master_id"]
+            if target_id == str(master_id):
+                continue
+            nodes[target_id] = {
+                "id": target_id,
+                "label": assoc["display_name"],
+                "is_center": False,
+                "node_kind": "associate",
             }
-        )
+            edge_id = f"{master_id}->{target_id}:{assoc['association_type']}"
+            edges.append(
+                {
+                    "id": edge_id,
+                    "source": str(master_id),
+                    "target": target_id,
+                    "role": assoc["association_type"],
+                    "link_kind": "associate",
+                    "dossier_id": assoc["dossier_id"],
+                    "crime_number": assoc.get("crime_number"),
+                    "ps_name": assoc.get("ps_name"),
+                }
+            )
 
     return {"nodes": list(nodes.values()), "edges": edges}
+

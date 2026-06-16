@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import base64
-from iam_svc.models.suspect_dossier import Suspect, SuspectAddress, SuspectDossier, SuspectMaster, SuspectPhoto, SuspectFingerprint
+from iam_svc.models.suspect_dossier import Suspect, SuspectAddress, SuspectDossier, SuspectMaster, SuspectPhoto, SuspectFingerprint, SuspectCase
 from iam_svc.services.suspect_address_utils import get_address_by_kind
+
 
 
 def _address_dict(addr: SuspectAddress) -> dict:
@@ -56,8 +57,10 @@ def build_master_profile(
     relatives: list[dict] = []
     photos: list[dict] = []
     fingerprints: list[dict] = []
+    cases: list[dict] = []
 
     for dossier in sorted(dossiers, key=lambda d: d.submitted_at, reverse=True):
+
         suspect = dossier.suspect
         office_name = office_names.get(str(dossier.office_id)) if dossier.office_id else None
         tag = {"dossier_id": str(dossier.id), "office_name": office_name}
@@ -89,8 +92,23 @@ def build_master_profile(
             photos.append(_photo_dict(p, tag, dossier_draft_id=draft_id))
         for f in sorted(suspect.fingerprints or [], key=lambda x: x.sort_order):
             fingerprints.append(_fingerprint_dict(f, tag))
+        for c in suspect.cases:
+            cases.append(
+                {
+                    **tag,
+                    "id": str(c.id),
+                    "crime_number": c.crime_number,
+                    "crime_year": c.crime_year,
+                    "police_station_id": str(c.police_station_id),
+                    "police_station_name": c.police_station.office_name if c.police_station else None,
+                    "act_section": c.act_section,
+                    "brief": c.brief,
+                    "present_status": c.present_status,
+                }
+            )
 
     return {
+
         "master_suspect_id": str(master.id),
         "display_name": master.display_name,
         "dossier_count": len(dossiers),
@@ -101,7 +119,9 @@ def build_master_profile(
         "relatives": relatives,
         "photos": photos,
         "fingerprints": fingerprints,
+        "cases": cases,
     }
+
 
 
 def build_dossier_detail(
@@ -172,8 +192,22 @@ def build_dossier_detail(
             _fingerprint_dict(f, tag)
             for f in sorted(suspect.fingerprints or [], key=lambda x: x.sort_order)
         ],
+        "cases": [
+            {
+                "id": str(c.id),
+                "crime_number": c.crime_number,
+                "crime_year": c.crime_year,
+                "police_station_id": str(c.police_station_id),
+                "police_station_name": c.police_station.office_name if c.police_station else None,
+                "act_section": c.act_section,
+                "brief": c.brief,
+                "present_status": c.present_status,
+            }
+            for c in suspect.cases
+        ],
         "dossier_draft_id": str(dossier.dossier_draft_id) if dossier.dossier_draft_id else None,
     }
+
 
 
 def _photo_dict(

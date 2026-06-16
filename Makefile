@@ -92,6 +92,9 @@ mobile-dev-device:
 mobile-dev-ip:
 	cd mobile/iip_app && $(MAKE) mobile-dev-ip API_DEVICE=$(API_DEVICE)
 
+frontend-dev:
+	pnpm --filter iip-portal run dev
+
 run: docker-up
 	pnpm --filter iip-portal run dev & \
 	KEYCLOAK_SERVER_URL=http://localhost:8081 \

@@ -195,8 +195,10 @@ export function emptyDossierDraft(): SuspectDossierDraft {
     socialAccounts: [],
     relatives: [],
     associates: [],
+    cases: [],
     linkDecision: null,
     updatedAt: new Date().toISOString(),
+
   };
 }
 
@@ -220,8 +222,15 @@ export const WIZARD_STEPS = [
     description: 'Legal name, aliases, and demographic details.',
   },
   {
+    id: 'cases',
+    label: 'Crime cases',
+    shortLabel: 'Cases',
+    description: 'Add crime cases, acts, sections and case status details.',
+  },
+  {
     id: 'address',
     label: 'Address',
+
     shortLabel: 'Address',
     description: 'Residential or known location with map coordinates.',
   },

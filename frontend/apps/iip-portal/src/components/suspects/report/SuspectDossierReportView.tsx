@@ -30,6 +30,7 @@ export interface DossierReportDetail {
   relatives?: Record<string, unknown>[];
   photos?: Record<string, unknown>[];
   fingerprints?: Record<string, unknown>[];
+  cases?: Record<string, unknown>[];
 }
 
 function str(v: unknown): string {
@@ -270,7 +271,50 @@ export function SuspectDossierReportView({
         </FieldTable>
       </ReportSection>
 
-      <ReportSection number="IV" title="Address & location" onEdit={editHref ? undefined : editAction}>
+      <ReportSection
+        number="IV"
+        title="Crime cases"
+        onEdit={editHref ? undefined : editAction}
+      >
+        {editHref && (
+          <p className="mb-3 font-sans text-xs">
+            <Link
+              to={`${editHref}?step=cases`}
+              className="text-iip-primary font-medium hover:underline"
+            >
+              Manage crime cases →
+            </Link>
+          </p>
+        )}
+        {(detail.cases ?? []).length === 0 ? (
+          <p className="suspect-report__empty">No crime cases recorded.</p>
+        ) : (
+          <table className="suspect-report__table suspect-report__table--list">
+            <thead>
+              <tr>
+                <th>Crime No. & Year</th>
+                <th>Police Station</th>
+                <th>Act & Section</th>
+                <th>Status</th>
+                <th>Brief</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(detail.cases ?? []).map((c, i) => (
+                <tr key={str(c.id) || i}>
+                  <td className="font-semibold">{str(c.crime_number)}/{str(c.crime_year)}</td>
+                  <td>{str(c.police_station_name) || str(c.police_station_id)}</td>
+                  <td>{str(c.act_section) || '—'}</td>
+                  <td>{str(c.present_status) || '—'}</td>
+                  <td className="text-xs max-w-xs truncate">{str(c.brief) || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </ReportSection>
+
+      <ReportSection number="V" title="Address & location" onEdit={editHref ? undefined : editAction}>
         <div className="space-y-6">
           {!hasDifferentPresent && (
             <FieldTable>
@@ -282,7 +326,7 @@ export function SuspectDossierReportView({
         </div>
       </ReportSection>
 
-      <ReportSection number="V" title="Contact details" onEdit={editHref ? undefined : editAction}>
+      <ReportSection number="VI" title="Contact details" onEdit={editHref ? undefined : editAction}>
         {(detail.contacts ?? []).length === 0 ? (
           <p className="suspect-report__empty">None recorded.</p>
         ) : (
@@ -305,7 +349,7 @@ export function SuspectDossierReportView({
         )}
       </ReportSection>
 
-      <ReportSection number="VI" title="Digital footprint" onEdit={editHref ? undefined : editAction}>
+      <ReportSection number="VII" title="Digital footprint" onEdit={editHref ? undefined : editAction}>
         {(detail.social_accounts ?? []).length === 0 ? (
           <p className="suspect-report__empty">None recorded.</p>
         ) : (
@@ -329,7 +373,7 @@ export function SuspectDossierReportView({
       </ReportSection>
 
       <ReportSection
-        number="VII"
+        number="VIII"
         title="Associates & relatives"
         onEdit={editHref ? undefined : editAction}
       >

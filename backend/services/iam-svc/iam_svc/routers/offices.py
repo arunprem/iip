@@ -9,10 +9,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 
+from sqlalchemy import select
 from iip_core.db import AsyncSession, get_db
 from iip_core.errors import ErrorCode, IIPException
 from iip_core.logging import get_logger
-from iam_svc.dependencies import require_system_admin_role
+from iam_svc.dependencies import require_system_admin_role, get_office_id
 from iam_svc.models.office import Office
 from iam_svc.models.role import Role
 from iam_svc.repositories.office_repository import OfficeRepository, slugify_office_code
@@ -111,6 +112,51 @@ class LegacySyncResponse(BaseModel):
     parsed: int
     synced: int
     message: str
+
+
+class PSLookupResponse(BaseModel):
+    id: str
+    office_name: str
+    office_code: str
+
+
+@router.get("/descendant-police-stations", response_model=list[PSLookupResponse])
+async def list_descendant_police_stations(
+    office_id: Annotated[uuid.UUID, Depends(get_office_id)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[PSLookupResponse]:
+    """List all police stations (unit_type=21) below the user's logged-in office hierarchy."""
+    repo = OfficeRepository(db)
+    user_office = await repo.get_by_id(office_id)
+    if not user_office:
+        raise IIPException(
+            status_code=404,
+            error_code=ErrorCode.NOT_FOUND,
+            detail="Office not found",
+        )
+
+    stmt = (
+        select(Office)
+        .where(
+            Office.root_id == user_office.root_id,
+            Office.lft >= user_office.lft,
+            Office.rgt <= user_office.rgt,
+            Office.office_type_id == 21,
+            Office.is_active.is_(True)
+        )
+        .order_by(Office.office_name)
+    )
+    result = await db.execute(stmt)
+    offices = result.scalars().all()
+
+    return [
+        PSLookupResponse(
+            id=str(o.id),
+            office_name=o.office_name,
+            office_code=o.office_code,
+        )
+        for o in offices
+    ]
 
 
 OfficeNodeResponse.model_rebuild()

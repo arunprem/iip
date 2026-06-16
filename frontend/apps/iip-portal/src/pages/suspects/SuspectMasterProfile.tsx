@@ -43,6 +43,7 @@ export default function SuspectMasterProfile() {
             relatives: (data.relatives as Record<string, unknown>[]) ?? [],
             photos: (data.photos as Record<string, unknown>[]) ?? [],
             fingerprints: (data.fingerprints as Record<string, unknown>[]) ?? [],
+            cases: (data.cases as Record<string, unknown>[]) ?? [],
           });
         }
       })

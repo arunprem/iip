@@ -44,6 +44,8 @@ export function KgNodeIntelPanel({
         linkKind: e.link_kind ?? 'associate',
         otherName: other ? nodeTitle(other) : otherId,
         direction,
+        crimeNumber: e.crime_number,
+        psName: e.ps_name,
       };
     });
 
@@ -85,18 +87,26 @@ export function KgNodeIntelPanel({
           <div className="kg-intel-panel__links">
             <p className="kg-intel-panel__links-title">Direct connections</p>
             <ul>
-              {connections.map((c) => (
-                <li key={c.id}>
-                  <span className="kg-intel-panel__link-role">{formatRelationRole(c.role)}</span>
-                  <span className="kg-intel-panel__link-arrow">
-                    {c.direction === 'outgoing' ? '→' : '←'}
-                  </span>
-                  <span className="kg-intel-panel__link-name">{c.otherName}</span>
-                  {c.linkKind === 'relative' && (
-                    <span className="kg-intel-panel__link-tag">family</span>
-                  )}
-                </li>
-              ))}
+              {connections.map((c) => {
+                let roleLabel = formatRelationRole(c.role);
+                if (c.role === 'CO_ACCUSED' && c.crimeNumber && c.psName) {
+                  roleLabel = `Co-Accused (FIR ${c.crimeNumber} - ${c.psName})`;
+                } else if (c.role === 'CO_ACCUSED' && c.crimeNumber) {
+                  roleLabel = `Co-Accused (FIR ${c.crimeNumber})`;
+                }
+                return (
+                  <li key={c.id}>
+                    <span className="kg-intel-panel__link-role">{roleLabel}</span>
+                    <span className="kg-intel-panel__link-arrow">
+                      {c.direction === 'outgoing' ? '→' : '←'}
+                    </span>
+                    <span className="kg-intel-panel__link-name">{c.otherName}</span>
+                    {c.linkKind === 'relative' && (
+                      <span className="kg-intel-panel__link-tag">family</span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

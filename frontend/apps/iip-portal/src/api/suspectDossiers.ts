@@ -105,6 +105,15 @@ function draftToCreatePayload(
         deviceModel: f.deviceModel,
         status: 'validated',
       })),
+    cases: draft.cases.map((c) => ({
+      id: c.id,
+      crimeNumber: c.crimeNumber,
+      crimeYear: Number(c.crimeYear) || new Date().getFullYear(),
+      policeStationId: c.policeStationId,
+      actSection: c.actSection,
+      brief: c.brief,
+      presentStatus: c.presentStatus,
+    })),
     linkDecision: linkDecision
       ? {
           masterSuspectId: linkDecision.masterSuspectId,

@@ -73,6 +73,23 @@ function mapRelatives(raw: unknown): SuspectDossierDraft['relatives'] {
   });
 }
 
+function mapCases(raw: unknown): SuspectDossierDraft['cases'] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((c) => {
+    const row = c as Record<string, unknown>;
+    return {
+      id: str(row.id),
+      crimeNumber: str(row.crime_number),
+      crimeYear: Number(row.crime_year) || new Date().getFullYear(),
+      policeStationId: str(row.police_station_id),
+      policeStationName: str(row.police_station_name),
+      actSection: str(row.act_section),
+      brief: str(row.brief),
+      presentStatus: str(row.present_status),
+    };
+  });
+}
+
 function mapAddressRow(row: Record<string, unknown>, isPermanent: boolean): SuspectDossierDraft['address'] {
   const base = isPermanent ? emptyAddress() : emptyPresentAddress();
   return {
@@ -230,6 +247,7 @@ export function dossierDetailToDraft(detail: Record<string, unknown>): SuspectDo
     socialAccounts: mapSocial(detail.social_accounts),
     relatives: mapRelatives(detail.relatives),
     associates: mapAssociates(detail.associates),
+    cases: mapCases(detail.cases),
     linkDecision: null,
     updatedAt: new Date().toISOString(),
   };
@@ -282,5 +300,14 @@ export function draftToUpdatePayload(draft: SuspectDossierDraft) {
         deviceModel: f.deviceModel,
         status: 'validated',
       })),
+    cases: draft.cases.map((c) => ({
+      id: c.id,
+      crimeNumber: c.crimeNumber,
+      crimeYear: Number(c.crimeYear) || new Date().getFullYear(),
+      policeStationId: c.policeStationId,
+      actSection: c.actSection,
+      brief: c.brief,
+      presentStatus: c.presentStatus,
+    })),
   };
 }

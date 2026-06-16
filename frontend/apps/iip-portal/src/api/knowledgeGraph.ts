@@ -59,6 +59,8 @@ export interface GraphEdge {
   role: string;
   link_kind?: GraphLinkKind;
   dossier_id: string | null;
+  crime_number?: string | null;
+  ps_name?: string | null;
 }
 
 export interface NetworkGraphResponse {

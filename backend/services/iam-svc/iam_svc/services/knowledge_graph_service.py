@@ -51,6 +51,7 @@ class KnowledgeGraphService:
     async def sync_associate_links(
         self,
         *,
+        dossier_id: str,
         source_master_id: str,
         source_display_name: str,
         associates: list[dict[str, Any]],
@@ -58,12 +59,28 @@ class KnowledgeGraphService:
         """Mirror associate edges from a dossier into Neo4j."""
         if not self.enabled:
             return
-        if not associates:
-            return
 
         def _run() -> None:
             with self._driver() as driver:
                 with driver.session() as session:
+                    # Clear existing relationships for this dossier first
+                    session.run(
+                        """
+                        MATCH (src:Suspect {masterId: $sourceId})-[r:ASSOCIATED_WITH]->()
+                        WHERE r.dossierId = $dossierId
+                        DELETE r
+                        """,
+                        sourceId=source_master_id,
+                        dossierId=dossier_id,
+                    )
+                    # Clear all CO_ACCUSED relationships involving this suspect (inbound or outbound)
+                    session.run(
+                        """
+                        MATCH (src:Suspect {masterId: $sourceId})-[r:ASSOCIATED_WITH {role: 'CO_ACCUSED'}]-()
+                        DELETE r
+                        """,
+                        sourceId=source_master_id,
+                    )
                     session.run(
                         """
                         MERGE (s:Suspect {masterId: $masterId})
@@ -74,7 +91,10 @@ class KnowledgeGraphService:
                         displayName=source_display_name,
                     )
                     for assoc in associates:
-                        target_id = str(assoc["master_id"])
+                        target_raw = assoc.get("master_id")
+                        if not target_raw or str(target_raw) == "None":
+                            continue
+                        target_id = str(target_raw)
                         if target_id == source_master_id:
                             continue
                         session.run(
@@ -86,6 +106,8 @@ class KnowledgeGraphService:
                             MERGE (src)-[r:ASSOCIATED_WITH]->(tgt)
                             SET r.role = $role,
                                 r.dossierId = $dossierId,
+                                r.crimeNumber = $crimeNumber,
+                                r.psName = $psName,
                                 r.updatedAt = datetime()
                             """,
                             sourceId=source_master_id,
@@ -93,6 +115,8 @@ class KnowledgeGraphService:
                             targetName=assoc.get("display_name"),
                             role=assoc.get("association_type") or "ASSOCIATE",
                             dossierId=assoc.get("dossier_id"),
+                            crimeNumber=assoc.get("crime_number"),
+                            psName=assoc.get("ps_name"),
                         )
 
         try:
@@ -147,10 +171,13 @@ class KnowledgeGraphService:
                     for node in record["others"] or []:
                         if node is None:
                             continue
-                        nodes_map[node["masterId"]] = {
-                            "id": node["masterId"],
-                            "label": node.get("displayName") or node["masterId"],
-                            "is_center": node["masterId"] == master_id,
+                        node_id = node.get("masterId")
+                        if not node_id or str(node_id) == "None":
+                            continue
+                        nodes_map[node_id] = {
+                            "id": node_id,
+                            "label": node.get("displayName") or node_id,
+                            "is_center": node_id == master_id,
                         }
 
                     edges: list[dict[str, Any]] = []
@@ -158,8 +185,10 @@ class KnowledgeGraphService:
                     for rel in record["edges"] or []:
                         if rel is None:
                             continue
-                        start = rel.start_node["masterId"]
-                        end = rel.end_node["masterId"]
+                        start = rel.start_node.get("masterId")
+                        end = rel.end_node.get("masterId")
+                        if not start or not end or str(start) == "None" or str(end) == "None":
+                            continue
                         key = f"{start}->{end}:{rel.get('role', '')}"
                         if key in seen_edges:
                             continue
@@ -171,13 +200,18 @@ class KnowledgeGraphService:
                                 "target": end,
                                 "role": rel.get("role") or "ASSOCIATE",
                                 "dossier_id": rel.get("dossierId"),
+                                "crime_number": rel.get("crimeNumber"),
+                                "ps_name": rel.get("psName"),
                             }
                         )
                         for n in (rel.start_node, rel.end_node):
-                            nodes_map[n["masterId"]] = {
-                                "id": n["masterId"],
-                                "label": n.get("displayName") or n["masterId"],
-                                "is_center": n["masterId"] == master_id,
+                            n_id = n.get("masterId")
+                            if not n_id or str(n_id) == "None":
+                                continue
+                            nodes_map[n_id] = {
+                                "id": n_id,
+                                "label": n.get("displayName") or n_id,
+                                "is_center": n_id == master_id,
                             }
 
                     return {
@@ -200,6 +234,7 @@ def get_knowledge_graph_service() -> KnowledgeGraphService:
 
 async def sync_dossier_associates_to_graph(
     *,
+    dossier_id: uuid.UUID,
     master_id: uuid.UUID,
     display_name: str,
     associates: list[dict[str, Any]],
@@ -207,6 +242,7 @@ async def sync_dossier_associates_to_graph(
     kg = get_knowledge_graph_service()
     await kg.upsert_suspect_node(str(master_id), display_name)
     await kg.sync_associate_links(
+        dossier_id=str(dossier_id),
         source_master_id=str(master_id),
         source_display_name=display_name,
         associates=associates,

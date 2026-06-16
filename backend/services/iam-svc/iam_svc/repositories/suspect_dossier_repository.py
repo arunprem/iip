@@ -26,7 +26,9 @@ from iam_svc.models.suspect_dossier import (
     SuspectPhoto,
     SuspectRelative,
     SuspectSocialAccount,
+    SuspectCase,
 )
+
 from iam_svc.services.suspect_address_utils import get_address_by_kind, get_primary_address
 from iam_svc.services.suspect_match_scoring import (
     MatchCandidateInput,
@@ -498,6 +500,25 @@ class SuspectDossierRepository:
                     sort_order=sort_order,
                 )
             )
+        for case in payload.get("cases") or []:
+            police_station_id = case.get("police_station_id")
+            if not police_station_id:
+                continue
+            if isinstance(police_station_id, str):
+                police_station_id = uuid.UUID(police_station_id)
+            self.session.add(
+                SuspectCase(
+                    id=uuid.uuid4() if not case.get("id") else uuid.UUID(str(case["id"])),
+                    suspect_id=suspect_id,
+                    dossier_id=dossier_id,
+                    crime_number=str(case["crime_number"]).strip(),
+                    crime_year=int(case["crime_year"]),
+                    police_station_id=police_station_id,
+                    act_section=case.get("act_section"),
+                    brief=case.get("brief"),
+                    present_status=case.get("present_status"),
+                )
+            )
 
     async def update_dossier(
         self,
@@ -551,6 +572,10 @@ class SuspectDossierRepository:
         await self.session.execute(
             delete(SuspectAssociate).where(SuspectAssociate.suspect_id == suspect.id)
         )
+        await self.session.execute(
+            delete(SuspectCase).where(SuspectCase.dossier_id == dossier.id)
+        )
+
 
         for contact in payload.get("contacts") or []:
             value = _optional_str(contact.get("value"))
@@ -598,6 +623,27 @@ class SuspectDossierRepository:
             created_by=suspect.created_by,
             office_id=dossier.office_id,
         )
+
+        for case in payload.get("cases") or []:
+            police_station_id = case.get("police_station_id")
+            if not police_station_id:
+                continue
+            if isinstance(police_station_id, str):
+                police_station_id = uuid.UUID(police_station_id)
+            self.session.add(
+                SuspectCase(
+                    id=uuid.uuid4() if not case.get("id") else uuid.UUID(str(case["id"])),
+                    suspect_id=suspect.id,
+                    dossier_id=dossier.id,
+                    crime_number=str(case["crime_number"]).strip(),
+                    crime_year=int(case["crime_year"]),
+                    police_station_id=police_station_id,
+                    act_section=case.get("act_section"),
+                    brief=case.get("brief"),
+                    present_status=case.get("present_status"),
+                )
+            )
+
 
         # Sync photos
         if "photos" in payload:
@@ -1161,16 +1207,51 @@ class SuspectDossierRepository:
     async def associates_for_graph_sync(self, dossier_id: uuid.UUID) -> list[dict]:
         stmt = select(SuspectAssociate).where(SuspectAssociate.dossier_id == dossier_id)
         rows = (await self.session.execute(stmt)).scalars().all()
-        return [
-            {
-                "master_id": str(row.linked_master_suspect_id),
-                "display_name": row.name,
-                "association_type": row.association_type or "ASSOCIATE",
-                "dossier_id": str(row.dossier_id),
-            }
-            for row in rows
-            if row.linked_master_suspect_id
-        ]
+        
+        # Explicit associates
+        links_dict = {}
+        for row in rows:
+            if row.linked_master_suspect_id:
+                mid = str(row.linked_master_suspect_id)
+                links_dict[mid] = {
+                    "master_id": mid,
+                    "display_name": row.name,
+                    "association_type": row.association_type or "ASSOCIATE",
+                    "dossier_id": str(row.dossier_id),
+                }
+
+        # Case-based co-accused links
+        cases_stmt = select(SuspectCase).where(SuspectCase.dossier_id == dossier_id)
+        current_cases = (await self.session.execute(cases_stmt)).scalars().all()
+        
+        for case in current_cases:
+            co_stmt = (
+                select(SuspectDossier, Suspect)
+                .join(Suspect, Suspect.id == SuspectDossier.suspect_id)
+                .join(SuspectCase, SuspectCase.dossier_id == SuspectDossier.id)
+                .where(
+                    SuspectCase.crime_number == case.crime_number,
+                    SuspectCase.crime_year == case.crime_year,
+                    SuspectCase.police_station_id == case.police_station_id,
+                    SuspectDossier.id != dossier_id
+                )
+            )
+            co_rows = (await self.session.execute(co_stmt)).all()
+            for co_dossier, co_suspect in co_rows:
+                mid = str(co_dossier.master_suspect_id)
+                if mid not in links_dict or links_dict[mid]["association_type"] != "CO_ACCUSED":
+                    ps_name = case.police_station.office_short_code or case.police_station.office_name if case.police_station else "Unknown PS"
+                    links_dict[mid] = {
+                        "master_id": mid,
+                        "display_name": co_suspect.criminal_name,
+                        "association_type": "CO_ACCUSED",
+                        "dossier_id": str(dossier_id),
+                        "crime_number": case.crime_number,
+                        "ps_name": ps_name,
+                    }
+        
+        return list(links_dict.values())
+
 
     async def get_master_graph_profiles(
         self,

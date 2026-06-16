@@ -365,7 +365,36 @@ export function SuspectReviewStep({ draft, onEditStep, onLinkDecision }: Suspect
           </FieldTable>
         </ReportSection>
 
-        <ReportSection number="III" title="Address & location" step="address" onEdit={onEditStep}>
+        <ReportSection number="III" title="Crime cases" step="cases" onEdit={onEditStep}>
+          {draft.cases.length === 0 ? (
+            <p className="suspect-report__empty">No crime cases recorded.</p>
+          ) : (
+            <table className="suspect-report__table suspect-report__table--list">
+              <thead>
+                <tr>
+                  <th>Crime No. & Year</th>
+                  <th>Police Station</th>
+                  <th>Act & Section</th>
+                  <th>Status</th>
+                  <th>Brief</th>
+                </tr>
+              </thead>
+              <tbody>
+                {draft.cases.map((c) => (
+                  <tr key={c.id}>
+                    <td className="font-semibold">{c.crimeNumber}/{c.crimeYear}</td>
+                    <td>{c.policeStationName || c.policeStationId}</td>
+                    <td>{c.actSection || '—'}</td>
+                    <td>{c.presentStatus || '—'}</td>
+                    <td className="text-xs max-w-xs truncate">{c.brief || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </ReportSection>
+
+        <ReportSection number="IV" title="Address & location" step="address" onEdit={onEditStep}>
           <div className="space-y-6">
             {!draft.hasDifferentPresentAddress && (
               <FieldTable>
@@ -379,7 +408,7 @@ export function SuspectReviewStep({ draft, onEditStep, onLinkDecision }: Suspect
           </div>
         </ReportSection>
 
-        <ReportSection number="IV" title="Contact details" step="contacts" onEdit={onEditStep}>
+        <ReportSection number="V" title="Contact details" step="contacts" onEdit={onEditStep}>
           {draft.contacts.length === 0 ? (
             <p className="suspect-report__empty">No contact numbers or email recorded.</p>
           ) : (
@@ -402,7 +431,7 @@ export function SuspectReviewStep({ draft, onEditStep, onLinkDecision }: Suspect
           )}
         </ReportSection>
 
-        <ReportSection number="V" title="Digital footprint" step="social" onEdit={onEditStep}>
+        <ReportSection number="VI" title="Digital footprint" step="social" onEdit={onEditStep}>
           {draft.socialAccounts.length === 0 ? (
             <p className="suspect-report__empty">No social media accounts recorded.</p>
           ) : (
@@ -426,7 +455,7 @@ export function SuspectReviewStep({ draft, onEditStep, onLinkDecision }: Suspect
         </ReportSection>
 
         <ReportSection
-          number="VI"
+          number="VII"
           title="Relatives & whereabouts"
           step="relatives"
           onEdit={onEditStep}
@@ -458,7 +487,7 @@ export function SuspectReviewStep({ draft, onEditStep, onLinkDecision }: Suspect
         </ReportSection>
 
         <ReportSection
-          number="VII"
+          number="VIII"
           title="Operational associates"
           step="relatives"
           onEdit={onEditStep}

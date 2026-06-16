@@ -85,6 +85,10 @@ class Suspect(Base):
     fingerprints: Mapped[list["SuspectFingerprint"]] = relationship(
         "SuspectFingerprint", back_populates="suspect", lazy="selectin"
     )
+    cases: Mapped[list["SuspectCase"]] = relationship(
+        "SuspectCase", back_populates="suspect", cascade="all, delete-orphan", lazy="selectin"
+    )
+
 
 
 class SuspectDossier(Base):
@@ -136,6 +140,10 @@ class SuspectDossier(Base):
     associates: Mapped[list["SuspectAssociate"]] = relationship(
         "SuspectAssociate", back_populates="dossier", lazy="selectin"
     )
+    cases: Mapped[list["SuspectCase"]] = relationship(
+        "SuspectCase", back_populates="dossier", cascade="all, delete-orphan", lazy="selectin"
+    )
+
 
 
 class SuspectAddress(Base):
@@ -400,4 +408,35 @@ class SuspectFingerprintSubmission(Base):
 
     suspect: Mapped["Suspect"] = relationship("Suspect", lazy="selectin")
     dossier: Mapped["SuspectDossier"] = relationship("SuspectDossier", lazy="selectin")
+
+
+class SuspectCase(Base):
+    __tablename__ = "suspect_cases"
+    __table_args__ = {"schema": "intelligence"}
+
+    suspect_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    dossier_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("intelligence.suspect_dossiers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    crime_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    crime_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    police_station_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("iam.offices.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    act_section: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    brief: Mapped[str | None] = mapped_column(Text, nullable=True)
+    present_status: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    suspect: Mapped["Suspect"] = relationship("Suspect", back_populates="cases", lazy="selectin")
+    dossier: Mapped["SuspectDossier"] = relationship("SuspectDossier", back_populates="cases", lazy="selectin")
+    police_station: Mapped["Office"] = relationship("Office", lazy="selectin")
+
 

@@ -32,6 +32,7 @@ export function normalizeDossierDraft(
       : emptyPresentAddress(),
     hasDifferentPresentAddress: parsed.hasDifferentPresentAddress ?? false,
     associates: parsed.associates ?? [],
+    cases: parsed.cases ?? [],
     fingerprints: parsed.fingerprints ?? base.fingerprints,
     linkDecision: parsed.linkDecision ?? null,
   };

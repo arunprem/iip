@@ -50,6 +50,14 @@ const ROLE_STYLES_DARK: Record<string, RelationLinkStyle> = {
     labelBg: 'rgba(76, 5, 25, 0.92)',
     glow: 'rgba(244, 63, 94, 0.55)',
   },
+  CO_ACCUSED: {
+    line: 'rgba(236, 72, 153, 0.82)',
+    arrow: 'rgba(244, 114, 182, 0.98)',
+    label: '#fbcfe8',
+    labelBorder: 'rgba(236, 72, 153, 0.85)',
+    labelBg: 'rgba(80, 7, 36, 0.92)',
+    glow: 'rgba(236, 72, 153, 0.55)',
+  },
 };
 
 const ROLE_STYLES_LIGHT: Record<string, RelationLinkStyle> = {
@@ -92,6 +100,14 @@ const ROLE_STYLES_LIGHT: Record<string, RelationLinkStyle> = {
     labelBorder: 'rgba(225, 29, 72, 0.65)',
     labelBg: 'rgba(255, 241, 242, 0.96)',
     glow: 'rgba(225, 29, 72, 0.35)',
+  },
+  CO_ACCUSED: {
+    line: 'rgba(219, 39, 119, 0.78)',
+    arrow: 'rgba(190, 24, 74, 0.95)',
+    label: '#9d174d',
+    labelBorder: 'rgba(219, 39, 119, 0.65)',
+    labelBg: 'rgba(255, 241, 242, 0.96)',
+    glow: 'rgba(219, 39, 119, 0.35)',
   },
 };
 

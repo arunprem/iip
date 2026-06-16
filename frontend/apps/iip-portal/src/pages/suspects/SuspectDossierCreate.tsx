@@ -16,6 +16,7 @@ import { SuspectWizardStepper } from '../../components/suspects/SuspectWizardSte
 import { SuspectAddressStep } from '../../components/suspects/steps/SuspectAddressStep';
 import { SuspectContactsStep } from '../../components/suspects/steps/SuspectContactsStep';
 import { SuspectIdentityStep } from '../../components/suspects/steps/SuspectIdentityStep';
+import { SuspectCasesStep } from '../../components/suspects/steps/SuspectCasesStep';
 import { SuspectFingerprintStep } from '../../components/suspects/steps/SuspectFingerprintStep';
 import { SuspectPhotoStep } from '../../components/suspects/steps/SuspectPhotoStep';
 import { SuspectRelativesStep } from '../../components/suspects/steps/SuspectRelativesStep';
@@ -344,6 +345,13 @@ export default function SuspectDossierCreate() {
         );
       case 'identity':
         return <SuspectIdentityStep draft={draft} onChange={patchDraft} />;
+      case 'cases':
+        return (
+          <SuspectCasesStep
+            draft={draft}
+            onChange={(cases) => patchDraft({ cases })}
+          />
+        );
       case 'address':
         return (
           <SuspectAddressStep

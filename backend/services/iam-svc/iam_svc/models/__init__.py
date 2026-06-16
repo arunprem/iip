@@ -21,11 +21,15 @@ from iam_svc.models.suspect_dossier import (
     SuspectSocialAccount,
     QuickSuspectCapture,
     SuspectFingerprintSubmission,
+    SuspectCase,
 )
 from iam_svc.models.suspect_link_decision import SuspectLinkDecision
+from iip_core.db import Base
 
 __all__ = [
+    "Base",
     "User",
+
     "Role",
     "JitSession",
     "Office",
@@ -48,4 +52,6 @@ __all__ = [
     "SuspectLinkDecision",
     "QuickSuspectCapture",
     "SuspectFingerprintSubmission",
+    "SuspectCase",
 ]
+

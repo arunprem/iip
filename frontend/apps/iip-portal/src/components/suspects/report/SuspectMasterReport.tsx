@@ -27,6 +27,7 @@ export interface MasterProfileData {
   relatives: Record<string, unknown>[];
   photos: Record<string, unknown>[];
   fingerprints: Record<string, unknown>[];
+  cases: Record<string, unknown>[];
 }
 
 export function SuspectMasterReport({ profile }: { profile: MasterProfileData }) {
@@ -205,7 +206,38 @@ export function SuspectMasterReport({ profile }: { profile: MasterProfileData })
         </table>
       </ReportSection>
 
-      <ReportSection number="III" title="Addresses (consolidated)">
+      <ReportSection number="III" title="Crime cases (consolidated)">
+        {profile.cases.length === 0 ? (
+          <p className="suspect-report__empty">No crime cases recorded.</p>
+        ) : (
+          <table className="suspect-report__table suspect-report__table--list">
+            <thead>
+              <tr>
+                <th>Crime No. & Year</th>
+                <th>Police Station</th>
+                <th>Act & Section</th>
+                <th>Status</th>
+                <th>Brief</th>
+                <th>Unit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profile.cases.map((c, i) => (
+                <tr key={str(c.id) || i}>
+                  <td className="font-semibold">{str(c.crime_number)}/{str(c.crime_year)}</td>
+                  <td>{str(c.police_station_name) || str(c.police_station_id)}</td>
+                  <td>{str(c.act_section) || '—'}</td>
+                  <td>{str(c.present_status) || '—'}</td>
+                  <td className="text-xs max-w-xs truncate">{str(c.brief) || '—'}</td>
+                  <td>{str(c.office_name) || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </ReportSection>
+
+      <ReportSection number="IV" title="Addresses (consolidated)">
         {profile.addresses.length === 0 ? (
           <p className="suspect-report__empty">No addresses recorded.</p>
         ) : (
@@ -234,7 +266,7 @@ export function SuspectMasterReport({ profile }: { profile: MasterProfileData })
         )}
       </ReportSection>
 
-      <ReportSection number="IV" title="Contacts (consolidated)">
+      <ReportSection number="V" title="Contacts (consolidated)">
         {profile.contacts.length === 0 ? (
           <p className="suspect-report__empty">None recorded.</p>
         ) : (
@@ -259,7 +291,7 @@ export function SuspectMasterReport({ profile }: { profile: MasterProfileData })
         )}
       </ReportSection>
 
-      <ReportSection number="V" title="Digital footprint (consolidated)">
+      <ReportSection number="VI" title="Digital footprint (consolidated)">
         {profile.social_accounts.length === 0 ? (
           <p className="suspect-report__empty">None recorded.</p>
         ) : (
@@ -284,7 +316,7 @@ export function SuspectMasterReport({ profile }: { profile: MasterProfileData })
         )}
       </ReportSection>
 
-      <ReportSection number="VI" title="Associates & relatives (consolidated)">
+      <ReportSection number="VII" title="Associates & relatives (consolidated)">
         {profile.relatives.length === 0 ? (
           <p className="suspect-report__empty">None recorded.</p>
         ) : (
@@ -310,7 +342,7 @@ export function SuspectMasterReport({ profile }: { profile: MasterProfileData })
       </ReportSection>
 
       {primary && (
-        <ReportSection number="VII" title="Primary identity summary">
+        <ReportSection number="VIII" title="Primary identity summary">
           <FieldTable>
             <FieldRow label="Legal name" value={str(primary.criminal_name)} colSpan />
             <FieldRow label="Father's name" value={str(primary.fathers_name)} colSpan />

@@ -45,6 +45,17 @@ export interface SuspectRelative {
   occupation: string;
 }
 
+export interface SuspectCase {
+  id?: string;
+  crimeNumber: string;
+  crimeYear: number;
+  policeStationId: string;
+  policeStationName?: string;
+  actSection?: string;
+  brief?: string;
+  presentStatus?: string;
+}
+
 export type { AssociateType } from './suspectAssociateConstants';
 
 import type { AssociateType } from './suspectAssociateConstants';
@@ -179,20 +190,24 @@ export interface SuspectDossierDraft {
   socialAccounts: SuspectSocialAccount[];
   relatives: SuspectRelative[];
   associates: SuspectAssociate[];
+  cases: SuspectCase[];
   linkDecision: SuspectLinkDecision | null;
   photoGeoTag?: { latitude: number; longitude: number } | null;
   updatedAt: string;
 }
 
+
 export type WizardStepId =
   | 'photo'
   | 'fingerprint'
   | 'identity'
+  | 'cases'
   | 'address'
   | 'contacts'
   | 'social'
   | 'relatives'
   | 'review';
+
 
 export interface WizardStepMeta {
   id: WizardStepId;

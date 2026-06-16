@@ -53,6 +53,8 @@ interface ForceLink {
   target: string | ForceNode;
   role: string;
   linkKind: LinkKind;
+  crimeNumber?: string | null;
+  psName?: string | null;
 }
 
 function linkNodeId(endpoint: string | ForceNode): string {
@@ -64,19 +66,7 @@ function linkFilterKey(link: ForceLink): string {
   return relationFilterKey(link.linkKind, role);
 }
 
-function withLinkAlpha(color: string, alpha: number): string {
-  const match = color.match(/rgba?\(\s*([^)]+)\s*\)/);
-  if (!match) return color;
-  const parts = match[1].split(',').map((s) => s.trim());
-  if (parts.length >= 4) {
-    const base = Number.parseFloat(parts[3]);
-    return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${base * alpha})`;
-  }
-  if (parts.length === 3) {
-    return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`;
-  }
-  return color;
-}
+
 
 export function AssociateNetworkGraph({
   nodes,
@@ -122,6 +112,8 @@ export function AssociateNetworkGraph({
       target: e.target,
       role: e.role,
       linkKind: (e.link_kind ?? 'associate') as LinkKind,
+      crimeNumber: e.crime_number,
+      psName: e.ps_name,
     }));
     return { nodes: forceNodes, links: forceLinks };
   }, [nodes, edges, centerId]);
@@ -378,7 +370,7 @@ export function AssociateNetworkGraph({
         moving = true;
       }
 
-      fgRef.current?.refresh();
+      (fgRef.current as ForceGraphMethods<ForceNode, ForceLink> & { refresh?: () => void })?.refresh?.();
       bump((n) => n + 1);
       if (moving) frame = window.requestAnimationFrame(step);
     };
@@ -524,11 +516,17 @@ export function AssociateNetworkGraph({
         ctx.shadowColor = visuals.glow;
         ctx.shadowBlur = 14 / globalScale;
       }
+      let labelText = formatRelationRole(l.role);
+      if (l.role === 'CO_ACCUSED' && l.crimeNumber && l.psName) {
+        labelText = `Co-Accused (FIR ${l.crimeNumber} - ${l.psName})`;
+      } else if (l.role === 'CO_ACCUSED' && l.crimeNumber) {
+        labelText = `Co-Accused (FIR ${l.crimeNumber})`;
+      }
       drawLinkLabel(
         ctx,
         mx,
         my,
-        formatRelationRole(l.role),
+        labelText,
         globalScale,
         graphTheme,
         l.linkKind,
@@ -633,11 +631,19 @@ export function AssociateNetworkGraph({
           return lines.join(' · ');
         }}
         linkVisibility={(l) => getLinkAlpha(l as ForceLink) > 0.03}
-        linkLabel={(l) =>
-          getLinkAlpha(l as ForceLink) > 0.35
-            ? formatRelationRole((l as ForceLink).role)
-            : ''
-        }
+        linkLabel={(l) => {
+          const fl = l as ForceLink;
+          if (getLinkAlpha(fl) > 0.35) {
+            if (fl.role === 'CO_ACCUSED' && fl.crimeNumber && fl.psName) {
+              return `Co-Accused (FIR ${fl.crimeNumber} - ${fl.psName})`;
+            }
+            if (fl.role === 'CO_ACCUSED' && fl.crimeNumber) {
+              return `Co-Accused (FIR ${fl.crimeNumber})`;
+            }
+            return formatRelationRole(fl.role);
+          }
+          return '';
+        }}
         linkWidth={(l) => {
           const link = l as ForceLink;
           const alpha = getLinkAlpha(link);
